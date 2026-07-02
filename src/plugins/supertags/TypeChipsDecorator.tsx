@@ -75,11 +75,13 @@ const TypeChips = ({block, typeIds, registry}: {
               <button
                 type="button"
                 className={cn(
-                  // Padding + negative margin: a finger-sized hit area
-                  // without growing the chip visually. A missed tap
-                  // would otherwise land on the content surface and
-                  // flip the block into edit mode.
-                  'rounded-sm p-1.5 -m-1.5 hover:bg-background focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+                  // Padding + negative margin: a larger hit area with
+                  // the chip's visual footprint unchanged. Capped at
+                  // p-1 so the reach doesn't cross the 4px gap into
+                  // the label's trailing characters — a missed tap
+                  // must fall through as edit intent, not remove the
+                  // type.
+                  'rounded-sm p-1 -m-1 hover:bg-background focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
                   color ? 'text-inherit opacity-70 hover:opacity-100' : 'text-muted-foreground hover:text-foreground',
                 )}
                 aria-label={`Remove ${label} type`}

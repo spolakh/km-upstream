@@ -66,7 +66,7 @@ describe('matchCharTrigger', () => {
     expect(matchCharTrigger('@@name', 6, '@')).toEqual({from: 1, query: 'name'})
   })
 
-  it('the nearest trigger owns the input — a sibling trigger breaks the walk', () => {
+  it('the nearest trigger owns the input — a viable sibling trigger breaks the walk', () => {
     // `#` matches its own query; the earlier `@` yields instead of
     // swallowing ` #todo` into a place query (which would fire a
     // remote Places request per tag keystroke).
@@ -76,10 +76,26 @@ describe('matchCharTrigger', () => {
     expect(matchCharTrigger('meet #proj @home', 16, '#')).toBeNull()
   })
 
-  it('does NOT match inside an unclosed ((blockref span', () => {
+  it('a NON-viable sibling (word char before it) is query text, not a dead zone', () => {
+    // `C#` can never fire the # trigger — if the @ walk yielded to it,
+    // NO source would open. Same for `@` inside an email-like token.
+    expect(at('@C# dev', 7)).toEqual({from: 0, query: 'C# dev'})
+    expect(matchCharTrigger('#email@work', 11, '#')).toEqual({from: 0, query: 'email@work'})
+  })
+
+  it('does NOT match inside an unclosed ((blockref span — ownership ends at the first single paren', () => {
     expect(matchCharTrigger('((see #to', 9, '#')).toBeNull()
     expect(at('((see @home', 11)).toBeNull()
     // A single paren is prose, not a blockref.
     expect(matchCharTrigger('(#task', 6, '#')).toEqual({from: 1, query: 'task'})
+    // `f((x)` is CLOSED for the blockref matcher (first `)` ends it) —
+    // a later trigger on the line must still fire…
+    expect(matchCharTrigger('f((x) so #ta', 12, '#')).toEqual({from: 9, query: 'ta'})
+    // …and a stray `))` earlier must not cancel a genuine `((`.
+    expect(matchCharTrigger('x)) ((y #t', 10, '#')).toBeNull()
+  })
+
+  it('throws on a trigger char missing from TRIGGER_CHARS (checked invariant)', () => {
+    expect(() => matchCharTrigger('!foo', 4, '!')).toThrow(/TRIGGER_CHARS/)
   })
 })

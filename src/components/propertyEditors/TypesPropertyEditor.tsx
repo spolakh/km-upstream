@@ -39,6 +39,10 @@ export function TypesPropertyEditor({
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(0)
+  // True once the user explicitly highlighted a row (arrows / hover)
+  // since last typing — an index-based proxy can't tell "navigated
+  // back to row 0" from "never navigated".
+  const [navigated, setNavigated] = useState(false)
   const typesRegistry = runtime.read(typesFacet)
   const options = useMemo<TypeOption[]>(() => Array.from(typesRegistry.values()).map(type => ({
     id: type.id,
@@ -82,14 +86,12 @@ export function TypesPropertyEditor({
       option.id.toLowerCase() === queryText ||
       option.label.toLowerCase() === queryText)
     const exact = exactMatches.find(option => !option.structural) ?? exactMatches[0]
-    // An explicit arrow-key selection beats the exact-match shortcut —
-    // committing something other than the highlighted row contradicts
-    // what the user is looking at.
-    const option = activeIndex > 0
-      ? filtered[activeIndex] ?? filtered[0]
-      : exact && !selectedSet.has(exact.id)
-        ? exact
-        : filtered[activeIndex] ?? filtered[0]
+    // An explicit highlight (arrows / hover) beats the exact-match
+    // shortcut — committing something other than the highlighted row
+    // contradicts what the user is looking at.
+    const option = !navigated && exact && !selectedSet.has(exact.id)
+      ? exact
+      : filtered[activeIndex] ?? filtered[0]
     if (!option) return false
     addType(option.id)
     return true
@@ -101,12 +103,14 @@ export function TypesPropertyEditor({
     if (event.key === 'ArrowDown') {
       event.preventDefault()
       setOpen(true)
+      setNavigated(true)
       setActiveIndex(index => Math.min(index + 1, Math.max(filtered.length - 1, 0)))
       return
     }
 
     if (event.key === 'ArrowUp') {
       event.preventDefault()
+      setNavigated(true)
       setActiveIndex(index => Math.max(index - 1, 0))
       return
     }
@@ -176,6 +180,7 @@ export function TypesPropertyEditor({
           onChange={event => {
             setQuery(event.target.value)
             setActiveIndex(0)
+            setNavigated(false)
             setOpen(true)
           }}
           onKeyDown={handleInputKeyDown}
@@ -200,7 +205,10 @@ export function TypesPropertyEditor({
               index === activeIndex ? 'bg-accent text-accent-foreground' : 'hover:bg-accent hover:text-accent-foreground',
             )}
             onMouseDown={event => event.preventDefault()}
-            onMouseEnter={() => setActiveIndex(index)}
+            onMouseEnter={() => {
+              setNavigated(true)
+              setActiveIndex(index)
+            }}
             onClick={() => addType(option.id)}
           >
             <Plus className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
