@@ -23,7 +23,7 @@ import { typeChipsDecoratorContribution } from './TypeChipsDecorator'
 export const supertagsPlugin: AppExtension = systemToggle({
   id: 'system:supertags',
   name: 'Type tags (#)',
-  description: 'Type # in a block to tag it with a type (or create one); a block\'s types show as #chips at the end of its content. Chip color and visibility are configured per type (on the type\'s definition block).',
+  description: 'Type # in a block to tag it with a type (or create one); a block\'s types show as #chips at the end of its content. For your own types, chip color and visibility live on the type\'s definition block; built-in types declare them in code.',
 }).of([
   codeMirrorExtensionsFacet.of(supertagsCodeMirrorExtensions, {source: 'supertags'}),
   blockContentDecoratorsFacet.of(typeChipsDecoratorContribution, {source: 'supertags'}),

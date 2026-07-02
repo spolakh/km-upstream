@@ -28,6 +28,14 @@ export interface CharTriggerOptions {
   rejectDoubledTrigger?: boolean
 }
 
+/** All registered trigger chars. The walk breaks on a SIBLING trigger
+ *  so the nearest trigger owns the input: in `meet @cafe #todo|` the
+ *  `#` source matches `todo` while the `@` walk hits the `#` and
+ *  yields — otherwise both sources fire into one dropdown, the place
+ *  query swallows ` #todo` (a remote Places request per keystroke),
+ *  and the type query swallows ` @home`. */
+const TRIGGER_CHARS: ReadonlySet<string> = new Set(['@', '#'])
+
 /** Queries routinely span words, so the caps below decide when a
  *  trigger earlier in the line stops owning what the user types: a
  *  double space or any non-space whitespace ends the query
@@ -38,14 +46,22 @@ export interface CharTriggerOptions {
 const MAX_QUERY_LEN = 50
 const MAX_QUERY_WORDS = 6
 
-const isInsideUnclosedWikilink = (text: string, beforePos: number): boolean => {
+/** True when `beforePos` sits after an unclosed `open` pair (`[[` for
+ *  wikilinks, `((` for blockrefs) — those spans belong to their own
+ *  autocompletes, so char triggers inside them must not fire. */
+const isInsideUnclosedSpan = (
+  text: string,
+  beforePos: number,
+  open: string,
+  close: string,
+): boolean => {
   let opens = 0
   let closes = 0
   for (let i = 0; i < beforePos - 1; i++) {
-    if (text[i] === '[' && text[i + 1] === '[') {
+    if (text[i] === open && text[i + 1] === open) {
       opens += 1
       i += 1
-    } else if (text[i] === ']' && text[i + 1] === ']') {
+    } else if (text[i] === close && text[i + 1] === close) {
       closes += 1
       i += 1
     }
@@ -70,6 +86,8 @@ export const matchCharTrigger = (
   while (i > 0) {
     const c = text[i - 1]
     if (c === trigger) break
+    // A sibling trigger closer to the cursor owns this input.
+    if (TRIGGER_CHARS.has(c)) return null
     if (c === ' ') {
       if (i >= 2 && text[i - 2] === ' ') return null
     } else if (/\s/.test(c)) {
@@ -93,9 +111,10 @@ export const matchCharTrigger = (
   if (opts.rejectDoubledTrigger && triggerPos > 0 && text[triggerPos - 1] === trigger) return null
   // Trigger directly preceded by `[` → inside a half-typed `[[@foo`; skip.
   if (triggerPos > 0 && text[triggerPos - 1] === '[') return null
-  // Trigger lives inside an unclosed `[[...` somewhere earlier on the
-  // line → the wikilink autocomplete owns this input.
-  if (isInsideUnclosedWikilink(text, triggerPos)) return null
+  // Trigger lives inside an unclosed `[[...` (wikilink) or `((...`
+  // (blockref) earlier on the line → that autocomplete owns the input.
+  if (isInsideUnclosedSpan(text, triggerPos, '[', ']')) return null
+  if (isInsideUnclosedSpan(text, triggerPos, '(', ')')) return null
 
   return {from: triggerPos, query}
 }

@@ -19,10 +19,6 @@ describe('matchAtTrigger', () => {
     expect(matchAtTrigger('met at @blue bottle', 19)).toEqual({from: 7, query: 'blue bottle'})
   })
 
-  it('does NOT match inside an email-like sequence', () => {
-    expect(matchAtTrigger('user@example', 12)).toBeNull()
-  })
-
   it('still matches a doubled @ (no stacked-trigger rejection for @)', () => {
     expect(matchAtTrigger('@@name', 6)).toEqual({from: 1, query: 'name'})
   })

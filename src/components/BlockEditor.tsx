@@ -7,7 +7,7 @@ import {
   isFocusedBlock,
   type EditorSelectionState,
 } from '@/data/properties.js'
-import { useRef, useEffect, useCallback, useMemo, useState, type Ref } from 'react'
+import { useRef, useEffect, useLayoutEffect, useCallback, useMemo, useState, type Ref } from 'react'
 import { useInEditMode, useIsEditing, useUIStateBlock } from '@/data/globalState'
 import { debounce } from 'lodash-es'
 import { placeCursorAtX, placeCursorAtCoords } from '@/utils/codemirror.js'
@@ -101,7 +101,15 @@ export const BlockEditor = ({
     pushSelection.flush()
   }, [pushChange, pushSelection])
 
-  useEffect(() => flushDebouncers, [flushDebouncers])
+  // Layout (not passive) effect: layout cleanups run BEFORE React
+  // detaches the host nodes, so by the time anyone observes the editor
+  // DOM as disconnected, the pending content/selection writes are
+  // already enqueued ahead of them on the FIFO write lock. The
+  // supertags failure-restore path relies on exactly this ordering —
+  // with a passive cleanup there is a one-frame window where the view
+  // is detached but the deletion never persisted, and a
+  // restore-vs-flush race can drop the user's text.
+  useLayoutEffect(() => flushDebouncers, [flushDebouncers])
 
   useEffect(() => {
     if (!blockEditData || !editorView) return

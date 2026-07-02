@@ -137,18 +137,40 @@ describe('UserTypesService subscription', () => {
     }, {timeout: SUBSCRIPTION_TIMEOUT_MS})
   })
 
-  it('a malformed display-config value skips that row without freezing the registry', async () => {
+  it('a malformed display-config value degrades to defaults without unregistering the type', async () => {
+    env = await setup()
+    const bad = await createBlockTypeBlock(env.repo, {label: 'Bad', hideTag: true})
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      // Simulate a bridge/import writing a string into the boolean prop
+      // (bypassing the typed setter, as raw writers can). Display-only
+      // props must not gate registration.
+      await env.repo.tx(async tx => {
+        const row = await tx.get(bad)
+        await tx.update(bad, {
+          properties: {...row!.properties, [blockTypeHideTagProp.name]: 'true'},
+        })
+      }, {scope: ChangeScope.BlockDefault})
+      await vi.waitFor(() => {
+        const contribution = env.repo.types.get(bad)
+        expect(contribution?.label).toBe('Bad')
+        expect(contribution?.hideTag).toBeUndefined()
+      }, {timeout: SUBSCRIPTION_TIMEOUT_MS})
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('a row whose projection throws (malformed label) is skipped without freezing the registry', async () => {
     env = await setup()
     const good = await createBlockTypeBlock(env.repo, {label: 'Good'})
     const bad = await createBlockTypeBlock(env.repo, {label: 'Bad'})
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     try {
-      // Simulate a bridge/import writing a string into the boolean prop
-      // (bypassing the typed setter, as raw writers can).
       await env.repo.tx(async tx => {
         const row = await tx.get(bad)
         await tx.update(bad, {
-          properties: {...row!.properties, [blockTypeHideTagProp.name]: 'true'},
+          properties: {...row!.properties, [blockTypeLabelProp.name]: 42},
         })
       }, {scope: ChangeScope.BlockDefault})
       // The bad row degrades to skipped; the good one must still update.

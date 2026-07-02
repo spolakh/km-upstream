@@ -65,4 +65,21 @@ describe('matchCharTrigger', () => {
     expect(matchCharTrigger('##task', 6, '#', {rejectDoubledTrigger: true})).toBeNull()
     expect(matchCharTrigger('@@name', 6, '@')).toEqual({from: 1, query: 'name'})
   })
+
+  it('the nearest trigger owns the input — a sibling trigger breaks the walk', () => {
+    // `#` matches its own query; the earlier `@` yields instead of
+    // swallowing ` #todo` into a place query (which would fire a
+    // remote Places request per tag keystroke).
+    expect(matchCharTrigger('meet @cafe #todo', 16, '#')).toEqual({from: 11, query: 'todo'})
+    expect(at('meet @cafe #todo', 16)).toBeNull()
+    expect(at('meet #proj @home', 16)).toEqual({from: 11, query: 'home'})
+    expect(matchCharTrigger('meet #proj @home', 16, '#')).toBeNull()
+  })
+
+  it('does NOT match inside an unclosed ((blockref span', () => {
+    expect(matchCharTrigger('((see #to', 9, '#')).toBeNull()
+    expect(at('((see @home', 11)).toBeNull()
+    // A single paren is prose, not a blockref.
+    expect(matchCharTrigger('(#task', 6, '#')).toEqual({from: 1, query: 'task'})
+  })
 })

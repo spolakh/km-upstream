@@ -51,7 +51,11 @@ const TypeChips = ({block, typeIds, registry}: {
     <span className="flex shrink-0 flex-wrap items-center gap-1" aria-label="Block types">
       {typeIds.map(typeId => {
         const type = registry.get(typeId)
-        const label = type?.label ?? typeId
+        // Unknown id (type not registered — other device's type not yet
+        // synced, plugin disabled, or a deleted definition block): keep
+        // the chip visible per the never-silently-disappear policy, but
+        // don't print a full uuid — shorten it and say what it is.
+        const label = type?.label ?? (typeId.length > 8 ? `${typeId.slice(0, 8)}…` : typeId)
         const color = chipColor(type)
         return (
           <span
@@ -64,14 +68,18 @@ const TypeChips = ({block, typeIds, registry}: {
               color,
               backgroundColor: `color-mix(in srgb, ${color} 14%, transparent)`,
             } : undefined}
-            title={type?.description ?? typeId}
+            title={type ? type.description ?? typeId : `Unknown type ${typeId} (not registered)`}
           >
             <span className="truncate">#{label}</span>
             {!readOnly && (
               <button
                 type="button"
                 className={cn(
-                  'rounded-sm hover:bg-background focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+                  // Padding + negative margin: a finger-sized hit area
+                  // without growing the chip visually. A missed tap
+                  // would otherwise land on the content surface and
+                  // flip the block into edit mode.
+                  'rounded-sm p-1.5 -m-1.5 hover:bg-background focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
                   color ? 'text-inherit opacity-70 hover:opacity-100' : 'text-muted-foreground hover:text-foreground',
                 )}
                 aria-label={`Remove ${label} type`}

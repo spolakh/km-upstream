@@ -18,6 +18,7 @@
 
 import {
   type AnyPropertySchema,
+  type PropertySchema,
   type TypeContribution,
 } from '@/data/api'
 import type { Block } from '@/data/block'
@@ -42,6 +43,15 @@ export const USER_TYPES_PROJECTOR_ID = 'user-types'
 
 const USER_DATA_SOURCE_ID = 'user-data'
 
+const safeDisplayProp = <T,>(block: Block, prop: PropertySchema<T>, fallback: T): T => {
+  try {
+    return block.peekProperty(prop) ?? fallback
+  } catch (err) {
+    console.warn(`[UserTypesService] block ${block.id}: malformed ${prop.name}; using default`, err)
+    return fallback
+  }
+}
+
 /** Build a TypeContribution from a user-authored block-type block.
  *  Returns null with a logged diagnostic when the label is empty;
  *  silently drops refList entries that don't resolve through the schema
@@ -57,8 +67,13 @@ const tryBuildType = (
     return null
   }
   const description = block.peekProperty(blockTypeDescriptionProp) ?? ''
-  const hideTag = block.peekProperty(blockTypeHideTagProp) ?? false
-  const color = (block.peekProperty(blockTypeColorProp) ?? '').trim()
+  // Display-only props must not gate registration: a malformed value
+  // (a raw bridge/import write of e.g. "true" into the boolean) decodes
+  // with a CodecError, and letting that skip the row would drop the
+  // type from every picker and re-offer "Create type" duplicates.
+  // Degrade to the default instead.
+  const hideTag = safeDisplayProp(block, blockTypeHideTagProp, false)
+  const color = safeDisplayProp(block, blockTypeColorProp, '').trim()
   const refIds = block.peekProperty(blockTypePropertiesProp) ?? []
   const properties: AnyPropertySchema[] = []
   for (const refId of refIds) {

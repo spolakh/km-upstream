@@ -74,17 +74,22 @@ export function TypesPropertyEditor({
   const commitCurrentQuery = (): boolean => {
     // A user-defined type can share a label with a structural kernel/
     // plugin type ("page", "Media"). Typing that label into a TYPE
-    // picker almost always means the taggable one — and preferring it
-    // keeps this picker consistent with the `#` autocomplete and the
-    // ref-target picker, which both resolve label collisions to the
-    // non-structural type.
+    // picker almost always means the taggable one — preferring it
+    // matches the `#` autocomplete's resolution (the ref-target picker
+    // currently resolves such collisions by registration order — a
+    // known gap, not a policy to be consistent with).
     const exactMatches = options.filter(option =>
       option.id.toLowerCase() === queryText ||
       option.label.toLowerCase() === queryText)
     const exact = exactMatches.find(option => !option.structural) ?? exactMatches[0]
-    const option = exact && !selectedSet.has(exact.id)
-      ? exact
-      : filtered[activeIndex] ?? filtered[0]
+    // An explicit arrow-key selection beats the exact-match shortcut —
+    // committing something other than the highlighted row contradicts
+    // what the user is looking at.
+    const option = activeIndex > 0
+      ? filtered[activeIndex] ?? filtered[0]
+      : exact && !selectedSet.has(exact.id)
+        ? exact
+        : filtered[activeIndex] ?? filtered[0]
     if (!option) return false
     addType(option.id)
     return true

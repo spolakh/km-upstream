@@ -205,11 +205,12 @@ describe('typeTagCompletionSource', () => {
     expect(explicit).toMatchObject({options: []})
   })
 
-  it('on apply, deletes the trigger text and hands the candidate to pickType', async () => {
+  it('on apply, deletes the trigger text and hands pickType the candidate + doc snapshots', async () => {
     const picked: TypeTagCandidate[] = []
+    const contexts: unknown[] = []
     const source = typeTagCompletionSource({
       getCandidates: () => [candidate()],
-      pickType: async c => { picked.push(c) },
+      pickType: async (c, ctx) => { picked.push(c); contexts.push(ctx) },
     })
     const view = new EditorView({
       state: EditorState.create({doc: 'call mom #ta'}),
@@ -223,6 +224,14 @@ describe('typeTagCompletionSource', () => {
       expect(view.state.doc.toString()).toBe('call mom ')
       expect(view.state.selection.main.head).toBe(9)
       expect(picked).toEqual([candidate()])
+      // The snapshots are the strip/restore contract — position, not
+      // text search (see planTriggerStrip).
+      expect(contexts).toEqual([{
+        triggerText: '#ta',
+        at: 9,
+        docBefore: 'call mom #ta',
+        docAfter: 'call mom ',
+      }])
     } finally {
       view.destroy()
     }

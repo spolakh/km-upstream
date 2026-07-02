@@ -27,5 +27,9 @@ export const roamTodoStateProp = defineProperty<RoamTodoState>('roam:todo-state'
 export const todoType = defineBlockType({
   id: TODO_TYPE,
   label: 'Todo',
+  // The checkbox renderer already conveys todo-ness on every todo
+  // block — a trailing #Todo tag chip would be pure duplication. Still
+  // taggable via # and fully visible in the property panel.
+  hideTag: true,
   properties: [statusProp],
 })
