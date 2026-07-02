@@ -51,8 +51,9 @@ const META_CACHE = `${CACHE_PREFIX}meta`
 // and it's been nudged to reload by the update prompt the whole time.
 const KEEP_GENERATIONS = 3
 
-// Caches that are never generation-GC'd.
-const PERSISTENT_CACHES = new Set([VENDOR_CACHE, META_CACHE])
+// VENDOR_CACHE / META_CACHE are never generation-GC'd: the scoped activate GC
+// below only ever names this deploy's own shell-/assets-<id> caches, so these
+// (and every sibling deploy's caches on this shared origin) are left untouched.
 
 // The SW lives at <base>/sw.js, so its scope and registration URL share the
 // app's base path. Resolve everything relative to the registration URL.
@@ -84,6 +85,19 @@ const PRECACHE_LAZY_ASSETS = JSON.parse('__PRECACHE_LAZY_ASSETS__')
   .map((p) => new URL(p, scopeURL).toString())
 
 const VENDOR_HOSTS = new Set(['esm.sh'])
+
+// A production/root SW's scope (…/knowledge-medium/) is a PREFIX of every
+// PR-preview path (…/pr-preview/pr-<n>/…), which are hosted on this same origin.
+// Since we never clients.claim(), the production SW controls a freshly-opened
+// preview page until it reloads — and would otherwise cache the preview's shell
+// + assets under production's OWN keys, poisoning the offline production shell
+// with an unmerged build. So a SW refuses to serve/cache a preview subtree it
+// doesn't own. A preview's own SW (its scope IS under /pr-preview/) is exempt,
+// so it still serves its own subtree normally.
+const PREVIEW_SUBTREE = /\/pr-preview\/pr-[^/]+\//
+const OWN_SCOPE_IS_PREVIEW = PREVIEW_SUBTREE.test(scopeURL.pathname)
+const isForeignPreviewRequest = (url) =>
+  !OWN_SCOPE_IS_PREVIEW && PREVIEW_SUBTREE.test(url.pathname)
 
 // --- generation ledger ------------------------------------------------------
 // An install-ordered list of BUILD_IDs (newest last), stored as a JSON
@@ -171,21 +185,23 @@ self.addEventListener('activate', (event) => {
       const keepIds = new Set(ledger.slice(-KEEP_GENERATIONS))
       if (ledger.length > keepIds.size) await writeLedger([...keepIds])
 
-      // Always retain THIS generation's caches, independent of the ledger —
-      // a stale or unreadable ledger must never delete the cache the running
-      // build is about to serve from.
-      const keepCaches = new Set([...PERSISTENT_CACHES, SHELL_CACHE, ASSET_CACHE])
-      for (const id of keepIds) {
-        keepCaches.add(`${CACHE_PREFIX}shell-${id}`)
-        keepCaches.add(`${CACHE_PREFIX}assets-${id}`)
-      }
-      // Only touch caches we own — caches.keys() lists every cache on the
-      // origin, including ones from other apps or features hosted here.
-      const keys = await caches.keys()
+      // Delete only THIS deploy's own now-expired generations. Cache Storage is
+      // per-ORIGIN, so caches.keys() also lists the production deploy's caches
+      // and every sibling PR preview's — all sharing the km- prefix, all live
+      // (production + previews are served from the same origin). Blanket-deleting
+      // km-* not in a keep-set would wipe THEIR caches. Our ledger holds only the
+      // generation ids this scope installed, and ids don't collide across deploys
+      // (distinct build shas), so mapping our expired ledger ids to cache names
+      // targets exactly our own — never a sibling's. The current build's id is
+      // the last ledger entry (recorded on install) so it's never expired; an
+      // unreadable/empty ledger yields no deletions (safe); vendor/meta and this
+      // build's caches are simply never named here.
+      const expiredIds = ledger.slice(0, Math.max(0, ledger.length - KEEP_GENERATIONS))
       await Promise.all(
-        keys
-          .filter((k) => k.startsWith(CACHE_PREFIX) && !keepCaches.has(k))
-          .map((k) => caches.delete(k)),
+        expiredIds.flatMap((id) => [
+          caches.delete(`${CACHE_PREFIX}shell-${id}`),
+          caches.delete(`${CACHE_PREFIX}assets-${id}`),
+        ]),
       )
       // NB: intentionally no clients.claim() — see the file header. Taking
       // over already-open pages is exactly what would let a new chunk land
@@ -266,6 +282,11 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return
   const url = new URL(request.url)
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return
+
+  // Never let production's broad-scope SW touch a nested preview deploy's
+  // requests — let them fall through to the network (the preview's own SW owns
+  // them once active). See isForeignPreviewRequest.
+  if (isForeignPreviewRequest(url)) return
 
   if (isNavigationRequest(request) && isSameOrigin(url)) {
     const shellURL = new URL('./index.html', scopeURL).toString()

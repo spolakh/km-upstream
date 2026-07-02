@@ -1,0 +1,87 @@
+name: PR Preview
+
+# Builds each PR and publishes it to gh-pages under pr-preview/pr-<n>/, so the
+# change is clickable at:
+#   https://stvad.github.io/knowledge-medium/pr-preview/pr-<n>/
+# rossjrw/pr-preview-action posts/updates a sticky comment with that URL on
+# every push and tears the preview down when the PR closes.
+# See docs/pr-preview-deployments.md for the one-time Pages setup.
+
+on:
+  pull_request:
+    # `closed` is required so action:auto can remove the preview on merge/close.
+    types: [opened, reopened, synchronize, closed]
+
+concurrency:
+  # Per-PR serialization: rapid pushes to the same PR queue instead of racing
+  # the gh-pages push. Kept separate from the production group so previews and
+  # production never fight over a shared queue slot. Not cancel-in-progress —
+  # cancelling mid git-push could corrupt the branch state.
+  group: pr-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write # push the preview subtree to the gh-pages branch
+  pull-requests: write # post/update the sticky preview-URL comment
+
+jobs:
+  preview:
+    # Skip forks: a fork PR gets neither the VITE_* secrets nor write access to
+    # gh-pages, so it would fail the env check / 403 on push. Every PR to this
+    # repo comes from a same-repo branch, which has both. (If a fork preview is
+    # ever wanted, it needs the pull_request_target hardening dance — out of
+    # scope, and deliberately not enabled here.)
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    env:
+      # Build under the exact subpath the preview is served from, so every
+      # asset URL, the service-worker scope, and version.json resolve. This is
+      # the whole reason the preview build is separate from production's.
+      APP_BASE_PATH: /${{ github.event.repository.name }}/pr-preview/pr-${{ github.event.pull_request.number }}/
+      VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || secrets.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY || secrets.VITE_SUPABASE_ANON_KEY }}
+      VITE_POWERSYNC_URL: ${{ vars.VITE_POWERSYNC_URL || secrets.VITE_POWERSYNC_URL }}
+      # Same key as production; the referrer restriction is on stvad.github.io,
+      # which previews share (they only differ by path), so Maps works here too.
+      VITE_GOOGLE_MAPS_API_KEY: ${{ vars.VITE_GOOGLE_MAPS_API_KEY || secrets.VITE_GOOGLE_MAPS_API_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        if: github.event.action != 'closed'
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: yarn
+
+      - name: Enable Corepack
+        if: github.event.action != 'closed'
+        run: corepack enable
+
+      - name: Validate build variables
+        if: github.event.action != 'closed'
+        run: |
+          test -n "$VITE_SUPABASE_URL"
+          test -n "$VITE_SUPABASE_ANON_KEY"
+          test -n "$VITE_POWERSYNC_URL"
+          test -n "$VITE_GOOGLE_MAPS_API_KEY"
+
+      - name: Install dependencies
+        if: github.event.action != 'closed'
+        run: yarn install --frozen-lockfile
+
+      - name: Build
+        if: github.event.action != 'closed'
+        run: yarn run build
+
+      # deploy on opened/reopened/synchronize, remove on closed (action: auto).
+      # source-dir must match the build output; umbrella-dir + the pr-<n>/ subdir
+      # must match APP_BASE_PATH above.
+      - name: Deploy preview
+        uses: rossjrw/pr-preview-action@v1
+        with:
+          source-dir: ./dist/
+          preview-branch: gh-pages
+          umbrella-dir: pr-preview
+          action: auto

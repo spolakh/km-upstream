@@ -5,22 +5,27 @@ on:
     branches: [master]
   workflow_dispatch:
 
+# We publish the production build to the `gh-pages` branch (root) rather than
+# via the Pages *artifact* flow (actions/deploy-pages). This is what lets PR
+# previews coexist: the same branch also holds `pr-preview/pr-<n>/` subtrees
+# (see pr-preview.yml). Pages must therefore be configured as
+# "Deploy from a branch: gh-pages / (root)" — see docs/pr-preview-deployments.md.
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write # push the built site to the gh-pages branch
+  id-token: write # required by actions/attest-build-provenance
   attestations: write # required by actions/attest-build-provenance
 
 concurrency:
-  group: pages
-  cancel-in-progress: true
+  # Production-only group. Kept SEPARATE from the per-PR preview group so a
+  # queued preview can never cancel a queued production deploy. cancel-in-progress
+  # is false so we never interrupt an in-flight `git push` to gh-pages mid-write;
+  # rapid master pushes queue and the latest wins.
+  group: deploy-pages-production
+  cancel-in-progress: false
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     env:
       APP_BASE_PATH: /${{ github.event.repository.name }}/
       VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || secrets.VITE_SUPABASE_URL }}
@@ -83,14 +88,15 @@ jobs:
         with:
           subject-path: dist/SHA256SUMS
 
-      - name: Set up Pages
-        uses: actions/configure-pages@v6
-
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v5
+      # Publish to the gh-pages branch root. `clean-exclude: pr-preview`
+      # preserves the live PR-preview subtrees on the branch, and
+      # `force: false` does a normal (fetch + rebase) push so a concurrent
+      # preview deploy isn't force-overwritten. Together these are what make
+      # production and previews share one branch safely.
+      - name: Deploy to GitHub Pages branch
+        uses: JamesIves/github-pages-deploy-action@v4
         with:
-          path: dist
-
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v5
+          branch: gh-pages
+          folder: dist
+          clean-exclude: pr-preview
+          force: false
