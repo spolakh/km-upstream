@@ -48,7 +48,9 @@ const TASK: TypeContribution = {id: 'uuid-task', label: 'Task'}
 const TRIP: TypeContribution = {id: 'uuid-trip', label: 'Trip', description: 'A journey'}
 const TODO: TypeContribution = {id: 'todo', label: 'Todo'}
 const PAGE: TypeContribution = {id: PAGE_TYPE, label: 'Page', hideFromCompletion: true, hideFromBlockDisplay: true}
-const PREFS: TypeContribution = {id: 'quick-find-ui-state', label: 'Quick find', hideFromCompletion: true, hideFromBlockDisplay: true}
+// Mirrors the pluginPrefsExtension/pluginUIStateExtension stamp:
+// completion-hidden, chip-visible.
+const PREFS: TypeContribution = {id: 'quick-find-ui-state', label: 'Quick find', hideFromCompletion: true}
 
 describe('buildTypeTagCandidates', () => {
   it('lists all visible types for an empty query, without a create sentinel', () => {
@@ -159,6 +161,11 @@ describe('visibleTagTypeIds', () => {
 
   it('keeps types missing from the registry (label falls back to the id)', () => {
     expect(visibleTagTypeIds(['uuid-unknown'], registryOf())).toEqual(['uuid-unknown'])
+  })
+
+  it('the flags are orthogonal: a completion-hidden type (prefs container) still shows its chip', () => {
+    expect(visibleTagTypeIds(['quick-find-ui-state'], registryOf(PREFS)))
+      .toEqual(['quick-find-ui-state'])
   })
 
   it('hideFromBlockDisplay types stay offerable in the # autocomplete', () => {

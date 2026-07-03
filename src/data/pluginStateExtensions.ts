@@ -10,7 +10,7 @@
  *  options non-discoverable.
  */
 
-import { INFRASTRUCTURE_TYPE_DISPLAY, type TypeContribution } from '@/data/api'
+import type { TypeContribution } from '@/data/api'
 import { typesFacet } from '@/data/facets.js'
 import { appEffectsFacet, type AppEffect } from '@/extensions/core.js'
 import type { AppExtension } from '@/facets/facet.js'
@@ -51,10 +51,11 @@ export const pluginPrefsExtension = (
   type: TypeContribution,
   source: string,
 ): readonly AppExtension[] => [
-  // Prefs containers are plumbing, not tags — stamp the infrastructure
-  // display flags so the tagging UX (# autocomplete, tag chips) never
-  // surfaces them.
-  typesFacet.of({...type, ...INFRASTRUCTURE_TYPE_DISPLAY}, {source}),
+  // Prefs containers are plumbing for the # dropdown (never offer to
+  // tag a block "Backlinks prefs"), but their chip is informative when
+  // the container block itself is on screen — so only completion is
+  // hidden.
+  typesFacet.of({...type, hideFromCompletion: true}, {source}),
   appEffectsFacet.of(pluginPrefsBootstrapEffect(type), {source}),
 ]
 
@@ -66,6 +67,6 @@ export const pluginUIStateExtension = (
   source: string,
 ): readonly AppExtension[] => [
   // UI-state containers are plumbing, not tags — see pluginPrefsExtension.
-  typesFacet.of({...type, ...INFRASTRUCTURE_TYPE_DISPLAY}, {source}),
+  typesFacet.of({...type, hideFromCompletion: true}, {source}),
   appEffectsFacet.of(pluginUIStateBootstrapEffect(type), {source}),
 ]

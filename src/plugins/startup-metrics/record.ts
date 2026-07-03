@@ -10,7 +10,7 @@
  * "store it so we can see TTI trend, not just feel it" half.
  */
 
-import { ChangeScope, codecs, defineBlockType, defineProperty, INFRASTRUCTURE_TYPE_DISPLAY } from '@/data/api'
+import { ChangeScope, codecs, defineBlockType, defineProperty } from '@/data/api'
 import type { Repo } from '@/data/repo'
 import type { AppEffect } from '@/extensions/core.js'
 import { onFirstSync, type SyncStatusDb } from '@/data/internals/firstSync.js'
@@ -79,7 +79,9 @@ export const startupRecordProp = defineProperty<StartupRecordData | undefined>('
 export const startupMetricsUIStateType = defineBlockType({
   id: 'startup-metrics',
   label: 'Startup metrics',
-  ...INFRASTRUCTURE_TYPE_DISPLAY,
+  // Plumbing for the # dropdown, but the chip is informative on the
+  // record block itself.
+  hideFromCompletion: true,
   properties: [],
 })
 

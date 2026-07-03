@@ -49,7 +49,9 @@ export const KERNEL_TYPE_CONTRIBUTIONS: readonly TypeContribution[] = [
     properties: [extensionNameProp, extensionDescriptionProp],
   }),
   defineBlockType({id: PAGE_TYPE, label: 'Page', ...INFRASTRUCTURE_TYPE_DISPLAY, properties: [aliasesProp]}),
-  defineBlockType({id: PANEL_TYPE, label: 'Panel', ...INFRASTRUCTURE_TYPE_DISPLAY}),
+  // Panels/user pages ARE plumbing for the # dropdown, but their chips
+  // are informative when the block itself is on screen — keep those.
+  defineBlockType({id: PANEL_TYPE, label: 'Panel', hideFromCompletion: true}),
   defineBlockType({id: PANEL_STACK_TYPE, label: 'Panel stack', ...INFRASTRUCTURE_TYPE_DISPLAY}),
   defineBlockType({
     id: PROPERTY_SCHEMA_TYPE,
@@ -95,7 +97,9 @@ export const KERNEL_TYPE_CONTRIBUTIONS: readonly TypeContribution[] = [
   defineBlockType({
     id: USER_TYPE,
     label: 'User',
-    ...INFRASTRUCTURE_TYPE_DISPLAY,
+    // Never offered by the # dropdown, but the chip is informative on
+    // the user page itself (see the Panel comment above).
+    hideFromCompletion: true,
     // Lift aliases + id so the property panel surfaces them and the id
     // auto-materialises when `addType('user')` runs.
     properties: [aliasesProp, userIdProp],

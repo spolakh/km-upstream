@@ -12,11 +12,13 @@ export interface TypeContribution {
   /** Never offer this type in the `#` autocomplete (nor as the target
    *  of its "Create type" dedup / a picker's exact-label commit). For
    *  kernel structure (page, panel, …) and plugin plumbing (prefs /
-   *  ui-state containers) that would otherwise pollute the dropdown —
-   *  such types normally set `hideFromBlockDisplay` too (see
-   *  `INFRASTRUCTURE_TYPE_DISPLAY`); `pluginPrefsExtension` /
-   *  `pluginUIStateExtension` stamp both automatically. The type stays
-   *  fully visible and removable in the property panel. */
+   *  ui-state containers) that would otherwise pollute the dropdown.
+   *  Orthogonal to the chip: some plumbing types keep their chip as an
+   *  on-block identity hint (panel, user, prefs containers — the
+   *  `pluginPrefsExtension` / `pluginUIStateExtension` stamp sets only
+   *  this flag), others hide both (see
+   *  `INFRASTRUCTURE_TYPE_DISPLAY`). The type stays fully visible and
+   *  removable in the property panel. */
   readonly hideFromCompletion?: boolean
   /** Don't render this type's `#label` chip on blocks. Display-only:
    *  the type stays offered in the `#` autocomplete and manageable in
@@ -30,12 +32,15 @@ export interface TypeContribution {
   readonly color?: string
 }
 
-/** Display spread for infrastructure types — kernel structure (page,
- *  panel, …) and plugin plumbing (prefs / ui-state containers,
- *  auto-managed state tags): hidden from the `#` autocomplete AND from
- *  block chip display, still visible in the property panel. Spread it
- *  (`...INFRASTRUCTURE_TYPE_DISPLAY`) rather than spelling the flags so
- *  a future display surface's flag gets picked up in one place. */
+/** Display spread for types the tagging UX should never surface at
+ *  all: hidden from the `#` autocomplete AND from block chip display,
+ *  still visible in the property panel. For plumbing whose chip has no
+ *  on-block value (page — every block row lives on one; auto-managed
+ *  state tags like SRS progress). Plumbing whose chip IS informative
+ *  on the block itself (panel, user, prefs containers) sets only
+ *  `hideFromCompletion`. Spread it (`...INFRASTRUCTURE_TYPE_DISPLAY`)
+ *  rather than spelling the flags so a future display surface's flag
+ *  gets picked up in one place. */
 export const INFRASTRUCTURE_TYPE_DISPLAY = {
   hideFromCompletion: true,
   hideFromBlockDisplay: true,
