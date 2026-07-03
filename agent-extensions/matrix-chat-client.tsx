@@ -138,6 +138,10 @@ const eventTimestampProp = defineProperty<number | undefined>('matrix-event:time
 const matrixChatPrefsType = defineBlockType({
   id: 'matrix-chat-prefs',
   label: 'Matrix',
+  // Prefs container is plumbing for the # dropdown (typing #Matrix
+  // must offer creating the user's own type, not tag with this);
+  // the chip stays informative on the container block itself.
+  hideFromCompletion: true,
   properties: [homeserverProp, roomIdProp, autoStartProp, connectedHintProp, statusProp],
 })
 const matrixMessageType = defineBlockType({

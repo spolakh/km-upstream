@@ -314,6 +314,21 @@ describe('findCompletableTypeByName', () => {
     expect(findCompletableTypeByName(registry, 'Page')).toBeUndefined()
     expect(findCompletableTypeByName(registry, '')).toBeUndefined()
   })
+
+  it('reads the COMPLETION flag, not the chip flag: a chip-hidden type is still the create-dedup target', () => {
+    // If this read ever switched to hideFromBlockDisplay, typing the
+    // exact label of a chip-hidden type (`#Todo`) would offer "Create
+    // type" and mint a duplicate — these two pin each flag direction.
+    const chipHidden: TypeContribution = {id: 'uuid-secret', label: 'Secret', hideFromBlockDisplay: true}
+    expect(findCompletableTypeByName(registryOf(chipHidden), 'secret')).toBe(chipHidden)
+
+    const out = buildTypeTagCandidates({
+      registry: registryOf(chipHidden),
+      currentTypeIds: [],
+      query: 'Secret',
+    })
+    expect(out).toEqual([{kind: 'existing', id: 'uuid-secret', label: 'Secret', detail: undefined}])
+  })
 })
 
 describe('restoreTriggerToView', () => {

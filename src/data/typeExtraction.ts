@@ -94,8 +94,13 @@ export interface CreateTypeBlockArgs {
   /** Chip color stamped onto `block-type:color`. Omitted → the
    *  least-used palette entry (`pickLeastUsedTypeColor`), so freshly
    *  created types spread across the color wheel instead of colliding
-   *  the way the pure hash fallback does. Pass `''` to create the type
-   *  uncolored (it then renders with the hash fallback). */
+   *  the way the pure hash fallback does. Pass `''` (or whitespace —
+   *  values are trimmed) to create the type uncolored (it then renders
+   *  with the hash fallback). The least-used pick only applies when
+   *  creating in the ACTIVE workspace: the registry projects only that
+   *  workspace's user types, so a cross-workspace pick would count the
+   *  wrong population and stamp a whole import batch one color —
+   *  those creates stay uncolored instead. */
   color?: string
   /** Caller cancellation signal. Honored before the tx opens, after
    *  pre-tx validation reads, and during the bridge wait. */
@@ -195,7 +200,13 @@ export async function createTypeBlock(
   // + color. The least-used pick reads the LIVE registry (pre-tx), so
   // two devices creating concurrently can still collide — acceptable:
   // the color is persisted data, editable on the definition block.
-  const color = args.color ?? pickLeastUsedTypeColor(repo.types.values())
+  // Cross-workspace creates skip the pick (see CreateTypeBlockArgs) —
+  // the registry only projects the active workspace's user types.
+  const color = args.color !== undefined
+    ? args.color.trim()
+    : args.workspaceId === repo.activeWorkspaceId
+      ? pickLeastUsedTypeColor(repo.types.values())
+      : ''
   const typeSnapshot = repo.snapshotTypeRegistries()
   let newId = ''
   await repo.tx(async tx => {

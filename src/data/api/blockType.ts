@@ -10,15 +10,19 @@ export interface TypeContribution {
   /** Optional longer description for tooltips / section headers. */
   readonly description?: string
   /** Never offer this type in the `#` autocomplete (nor as the target
-   *  of its "Create type" dedup / a picker's exact-label commit). For
-   *  kernel structure (page, panel, …) and plugin plumbing (prefs /
-   *  ui-state containers) that would otherwise pollute the dropdown.
-   *  Orthogonal to the chip: some plumbing types keep their chip as an
-   *  on-block identity hint (panel, user, prefs containers — the
-   *  `pluginPrefsExtension` / `pluginUIStateExtension` stamp sets only
-   *  this flag), others hide both (see
-   *  `INFRASTRUCTURE_TYPE_DISPLAY`). The type stays fully visible and
-   *  removable in the property panel. */
+   *  of its "Create type" dedup), and never PREFER it on a label
+   *  collision in the panel's type picker (which lists everything and
+   *  may still commit one when it's the sole exact match). For kernel
+   *  structure (page, panel, …) and plugin plumbing (prefs / ui-state
+   *  containers) that would otherwise pollute the dropdown. Also makes
+   *  the on-block chip read-only (no one-click X — see
+   *  TypeChipsDecorator) and excludes the type from the least-used
+   *  color pick. Orthogonal to the chip's visibility: some plumbing
+   *  types keep their chip as an on-block identity hint (panel, user,
+   *  prefs containers — the `pluginPrefsExtension` /
+   *  `pluginUIStateExtension` stamp sets only this flag), others hide
+   *  both (see `INFRASTRUCTURE_TYPE_DISPLAY`). The type stays fully
+   *  visible and removable in the property panel. */
   readonly hideFromCompletion?: boolean
   /** Don't render this type's `#label` chip on blocks. Display-only:
    *  the type stays offered in the `#` autocomplete and manageable in

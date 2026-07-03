@@ -854,10 +854,13 @@ export default [
     {source: SOURCE},
   ),
 
-  // Types for imported records
-  typesFacet.of({id: 'readwise-root', name: 'Readwise root'}, {source: SOURCE}),
-  typesFacet.of({id: 'readwise-book', name: 'Readwise book'}, {source: SOURCE}),
-  typesFacet.of({id: 'readwise-highlight', name: 'Readwise highlight'}, {source: SOURCE}),
+  // Types for imported records. (`label`, not `name` — TypeContribution
+  // has no `name` field, so the old key rendered these types by id.)
+  // The root is a singleton container: keep it out of the # dropdown
+  // so #Readwise offers creating the user's own type instead.
+  typesFacet.of({id: 'readwise-root', label: 'Readwise root', hideFromCompletion: true}, {source: SOURCE}),
+  typesFacet.of({id: 'readwise-book', label: 'Readwise book'}, {source: SOURCE}),
+  typesFacet.of({id: 'readwise-highlight', label: 'Readwise highlight'}, {source: SOURCE}),
 
   // Property schemas for imported records (BlockDefault scope — these are
   // workspace-visible data, not per-user settings).

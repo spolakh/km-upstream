@@ -7,11 +7,42 @@ import { Block } from '@/data/block'
 import { useAppRuntime } from '@/extensions/runtimeContext.js'
 import { FloatingListbox } from '@/components/ui/floating-listbox.js'
 
-interface TypeOption {
+export interface TypeOption {
   id: string
   label: string
   description?: string
   hideFromCompletion: boolean
+}
+
+/** Which option Enter/Tab commits. Pure — exported for direct testing.
+ *
+ *  A user-defined type can share a label with an infrastructure
+ *  kernel/plugin type ("page", "Media"). Typing that label into a TYPE
+ *  picker almost always means the completion-offered one — preferring
+ *  it matches the `#` autocomplete's resolution (the ref-target picker
+ *  currently resolves such collisions by registration order — a known
+ *  gap, not a policy to be consistent with). A sole infrastructure
+ *  exact match still commits (the panel's dropdown deliberately lists
+ *  everything, and it's the visibly highlighted row). An explicit
+ *  highlight (arrows / hover → `navigated`) beats the exact-match
+ *  shortcut — committing something other than the highlighted row
+ *  contradicts what the user is looking at. */
+export const resolveCommitTarget = (args: {
+  options: readonly TypeOption[]
+  filtered: readonly TypeOption[]
+  /** Trimmed, lowercased query. */
+  queryText: string
+  navigated: boolean
+  activeIndex: number
+  selectedIds: ReadonlySet<string>
+}): TypeOption | undefined => {
+  const exactMatches = args.options.filter(option =>
+    option.id.toLowerCase() === args.queryText ||
+    option.label.toLowerCase() === args.queryText)
+  const exact = exactMatches.find(option => !option.hideFromCompletion) ?? exactMatches[0]
+  return !args.navigated && exact && !args.selectedIds.has(exact.id)
+    ? exact
+    : args.filtered[args.activeIndex] ?? args.filtered[0]
 }
 
 const normalizedTypes = (value: readonly string[]): readonly string[] =>
@@ -76,23 +107,9 @@ export function TypesPropertyEditor({
   }
 
   const commitCurrentQuery = (): boolean => {
-    // A user-defined type can share a label with an infrastructure
-    // kernel/plugin type ("page", "Media"). Typing that label into a
-    // TYPE picker almost always means the completion-offered one —
-    // preferring it matches the `#` autocomplete's resolution (the
-    // ref-target picker currently resolves such collisions by
-    // registration order — a known gap, not a policy to be consistent
-    // with).
-    const exactMatches = options.filter(option =>
-      option.id.toLowerCase() === queryText ||
-      option.label.toLowerCase() === queryText)
-    const exact = exactMatches.find(option => !option.hideFromCompletion) ?? exactMatches[0]
-    // An explicit highlight (arrows / hover) beats the exact-match
-    // shortcut — committing something other than the highlighted row
-    // contradicts what the user is looking at.
-    const option = !navigated && exact && !selectedSet.has(exact.id)
-      ? exact
-      : filtered[activeIndex] ?? filtered[0]
+    const option = resolveCommitTarget({
+      options, filtered, queryText, navigated, activeIndex, selectedIds: selectedSet,
+    })
     if (!option) return false
     addType(option.id)
     return true

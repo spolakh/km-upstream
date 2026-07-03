@@ -114,7 +114,7 @@ describe('UserTypesService subscription', () => {
     expect(env.service.getTypeBlockId(id)).toBe(id)
   })
 
-  it('lifts hide-tag and color onto the contribution, and republishes on change', async () => {
+  it('lifts hide-from-block-display and color onto the contribution, and republishes on change', async () => {
     env = await setup()
     const id = await createBlockTypeBlock(env.repo, {
       label: 'Recipe',
@@ -124,10 +124,17 @@ describe('UserTypesService subscription', () => {
     const contribution = env.repo.types.get(id)
     expect(contribution).toMatchObject({hideFromBlockDisplay: true, color: '#e11d48'})
 
-    // Display config is live-editable: a color change must survive the
-    // contributionsEqual dedup and reach the registry.
+    // Display config is live-editable, ONE FIELD AT A TIME — each step
+    // pins its own field in the contributionsEqual dedup (a combined
+    // write would let either comparison vanish behind the other).
     await env.repo.tx(async tx => {
       await tx.setProperty(id, blockTypeColorProp, 'tomato')
+    }, {scope: ChangeScope.BlockDefault})
+    await vi.waitFor(() => {
+      expect(env.repo.types.get(id)?.color).toBe('tomato')
+    }, {timeout: SUBSCRIPTION_TIMEOUT_MS})
+
+    await env.repo.tx(async tx => {
       await tx.setProperty(id, blockTypeHideFromBlockDisplayProp, false)
     }, {scope: ChangeScope.BlockDefault})
     await vi.waitFor(() => {
@@ -186,7 +193,7 @@ describe('UserTypesService subscription', () => {
     }
   })
 
-  it('omits hide-tag and color when unset (defaults stay off the contribution)', async () => {
+  it('omits hide-from-block-display and color when unset (defaults stay off the contribution)', async () => {
     env = await setup()
     const id = await createBlockTypeBlock(env.repo, {label: 'Plain'})
     const contribution = env.repo.types.get(id)!

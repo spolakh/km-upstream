@@ -30,16 +30,23 @@ describe('pickLeastUsedTypeColor', () => {
   })
 
   it('uncolored types occupy their hash-fallback bucket', () => {
-    const type = defineBlockType({id: 'x1', label: 'X'})
-    const pick = pickLeastUsedTypeColor([type])
-    expect(pick).not.toBe(defaultTypeColor('x1'))
-    expect(DEFAULT_TYPE_COLORS).toContain(pick)
+    // 'panel-stack' FNV-hashes to bucket 0 — chosen so the assertion
+    // discriminates: if uncolored types were NOT counted, every bucket
+    // would sit at zero and the pick would be palette[0], not [1]. (An
+    // id hashing elsewhere makes both behaviors return palette[0] and
+    // the test proves nothing.)
+    const type = defineBlockType({id: 'panel-stack', label: 'X'})
+    expect(defaultTypeColor('panel-stack')).toBe(DEFAULT_TYPE_COLORS[0])
+    expect(pickLeastUsedTypeColor([type])).toBe(DEFAULT_TYPE_COLORS[1])
   })
 
-  it('off-palette custom colors and chip-hidden types do not occupy buckets', () => {
+  it('off-palette custom colors, chip-hidden, and plumbing types do not occupy buckets', () => {
     const types = [
       defineBlockType({id: 'a', label: 'A', color: 'tomato'}),
       defineBlockType({id: 'b', label: 'B', color: DEFAULT_TYPE_COLORS[0], hideFromBlockDisplay: true}),
+      // Completion-hidden plumbing (panel, prefs containers): chip-
+      // visible but too rare on screen to reserve a bucket.
+      defineBlockType({id: 'c', label: 'C', color: DEFAULT_TYPE_COLORS[0], hideFromCompletion: true}),
     ]
     expect(pickLeastUsedTypeColor(types)).toBe(DEFAULT_TYPE_COLORS[0])
   })

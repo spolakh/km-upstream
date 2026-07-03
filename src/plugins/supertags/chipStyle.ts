@@ -19,7 +19,7 @@ const configuredChipColor = (type: TypeContribution): string | undefined => {
   return color
 }
 
-export interface ChipStyle {
+interface ChipStyle {
   color: string
   backgroundColor: string
 }
@@ -33,7 +33,6 @@ export interface ChipStyle {
  *  synced / plugin disabled), not a styling gap. */
 export const chipStyle = (
   type: TypeContribution | undefined,
-  typeId: string,
 ): ChipStyle | undefined => {
   if (!type) return undefined
   const configured = configuredChipColor(type)
@@ -43,7 +42,7 @@ export const chipStyle = (
       backgroundColor: `color-mix(in srgb, ${configured} 14%, transparent)`,
     }
   }
-  const base = defaultTypeColor(typeId)
+  const base = defaultTypeColor(type.id)
   return {
     color: `color-mix(in oklch, ${base} 72%, hsl(var(--foreground)))`,
     backgroundColor: `color-mix(in srgb, ${base} 14%, transparent)`,

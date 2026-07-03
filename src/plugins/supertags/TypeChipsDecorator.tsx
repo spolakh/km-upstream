@@ -55,7 +55,16 @@ const TypeChips = ({block, typeIds, registry}: {
         // the chip visible per the never-silently-disappear policy, but
         // don't print a full uuid — shorten it and say what it is.
         const label = type?.label ?? (typeId.length > 8 ? `${typeId.slice(0, 8)}…` : typeId)
-        const style = chipStyle(type, typeId)
+        const style = chipStyle(type)
+        // Plumbing chips (panel, user, prefs containers — anything the
+        // `#` dropdown refuses to offer) are informative but LOAD-
+        // BEARING: one click on the X would strip e.g. `panel-stack`
+        // from a layout row or orphan a plugin's prefs container, and
+        // the dropdown can't re-add what it never offers. Keep those
+        // chips read-only here; the property panel (which lists every
+        // type) stays the deliberate-removal surface. Unregistered ids
+        // keep their X — removing a junk tag is the point of the chip.
+        const removable = !readOnly && type?.hideFromCompletion !== true
         // A user-defined type's definition block IS its id's source —
         // link the chip there. Kernel/plugin types have no backing
         // block (their config lives in code), so their chips stay
@@ -87,7 +96,7 @@ const TypeChips = ({block, typeIds, registry}: {
             ) : (
               <span className="truncate">{labelText}</span>
             )}
-            {!readOnly && (
+            {removable && (
               <button
                 type="button"
                 className={cn(
@@ -104,8 +113,11 @@ const TypeChips = ({block, typeIds, registry}: {
                 onMouseDown={event => event.preventDefault()}
                 onClick={event => {
                   // Removing a tag must not double as "activate the
-                  // block's editor" — the content surface underneath
-                  // treats bubbled clicks as edit intents.
+                  // block's editor". The actual guard is `button`
+                  // being in `interactiveContentSelector` (the content
+                  // surface's click-to-edit filter); stopPropagation
+                  // is defense-in-depth for any other bubbled-click
+                  // listener above the chip row.
                   event.stopPropagation()
                   void block.removeType(typeId)
                 }}
@@ -145,11 +157,12 @@ const TypeChipsDecorator = ({block, Inner}: TypeChipsDecoratorProps) => {
           of the text, with a 2rem floor as the caret's landing strip.
           Embed CONTENT renderers (video player etc.) sit inside this
           wrapper even though the decorator is innermost — a 100%-width
-          iframe/video has no intrinsic width, so fit-content would
-          collapse it; give those the full row and let the chips wrap
-          below. */}
+          iframe/video/audio has no useful intrinsic width (react-player
+          renders an audio element for audio-file URLs), so fit-content
+          would collapse it; give those the full row and let the chips
+          wrap below. */}
       <div className={visible.length > 0
-        ? 'min-w-8 max-w-full has-[iframe]:w-full has-[video]:w-full'
+        ? 'min-w-8 max-w-full has-[iframe]:w-full has-[video]:w-full has-[audio]:w-full'
         : 'w-full'}>
         <Inner block={block}/>
       </div>

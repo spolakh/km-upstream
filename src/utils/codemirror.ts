@@ -19,8 +19,11 @@ export const clampSelectionToLength = (
   EditorSelection.create(
     selection.ranges.map(range =>
       EditorSelection.range(
-        Math.min(range.anchor, docLength),
-        Math.min(range.head, docLength),
+        // Both bounds: persisted selections are synced data a bridge /
+        // import can corrupt, and a negative offset throws at dispatch
+        // just like an overlong one.
+        Math.max(0, Math.min(range.anchor, docLength)),
+        Math.max(0, Math.min(range.head, docLength)),
       )),
     selection.mainIndex,
   )

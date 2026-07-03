@@ -265,6 +265,10 @@ const reviewedProp = defineProperty<boolean>('readwise:reviewed', {
 const readwisePrefsType = defineBlockType({
   id: 'readwise-prefs',
   label: 'Readwise',
+  // Prefs container is plumbing for the # dropdown (typing #Readwise
+  // must offer creating the user's own type, not tag with this);
+  // the chip stays informative on the container block itself.
+  hideFromCompletion: true,
   properties: [
     lastSyncedAtProp, syncSinceProp,
     pageTitleTemplateProp, bookTemplateProp, highlightTemplateProp,
@@ -275,6 +279,8 @@ const readwisePrefsType = defineBlockType({
 const readwiseLibraryType = defineBlockType({
   id: READWISE_LIBRARY_TYPE,
   label: 'Readwise library',
+  // Singleton root marker, same rationale as the prefs container.
+  hideFromCompletion: true,
 })
 const readwiseDocumentType = defineBlockType({
   id: READWISE_DOCUMENT_TYPE,

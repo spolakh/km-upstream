@@ -44,20 +44,23 @@ export const defaultTypeColor = (typeId: string): string => {
   return DEFAULT_TYPE_COLORS[(hash >>> 0) % DEFAULT_TYPE_COLORS.length]
 }
 
-/** The palette entry currently carried by the fewest visible types —
+/** The palette entry currently carried by the fewest TAG-LIKE types —
  *  what `createTypeBlock` stamps onto a new type so fresh types spread
  *  across the wheel instead of colliding like a pure hash would.
- *  Counts each chip-visible type's EFFECTIVE color: its configured
- *  color when that is a palette entry, its hash fallback otherwise
- *  (off-palette custom colors don't occupy a bucket; chip-hidden types
- *  never show a color at all). Deterministic: ties break in palette
- *  order. */
+ *  Tag-like = chip-visible AND completion-offered: chip-hidden types
+ *  never show a color, and plumbing chips (`hideFromCompletion` —
+ *  panel, user, prefs containers) appear too rarely to co-occur with
+ *  real tags to be worth burning half the wheel's headroom on a fresh
+ *  workspace. Counts each type's EFFECTIVE color: its configured color
+ *  when that is a palette entry, its hash fallback otherwise
+ *  (off-palette custom colors don't occupy a bucket). Deterministic:
+ *  ties break in palette order. */
 export const pickLeastUsedTypeColor = (
   types: Iterable<TypeContribution>,
 ): string => {
   const counts = new Map<string, number>(DEFAULT_TYPE_COLORS.map(color => [color, 0]))
   for (const type of types) {
-    if (type.hideFromBlockDisplay === true) continue
+    if (type.hideFromBlockDisplay === true || type.hideFromCompletion === true) continue
     const effective = type.color?.trim() || defaultTypeColor(type.id)
     const count = counts.get(effective)
     if (count !== undefined) counts.set(effective, count + 1)

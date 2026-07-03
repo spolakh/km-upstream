@@ -26,7 +26,9 @@ const WS = 'ws-supertags-chips'
 const TIMEOUT_MS = 3_000
 
 const repoRef = vi.hoisted(() => ({current: undefined as unknown}))
-const openCalls = vi.hoisted(() => ({current: [] as Array<{blockId: string; workspaceId?: string}>}))
+const openCalls = vi.hoisted(() => ({
+  current: [] as Array<{blockId: string; workspaceId?: string; defaultPrevented: boolean}>,
+}))
 
 vi.mock('@/context/repo', () => ({
   useRepo: () => {
@@ -38,11 +40,15 @@ vi.mock('@/context/repo', () => ({
 vi.mock('@/utils/navigation', async importOriginal => ({
   ...await importOriginal<typeof import('@/utils/navigation')>(),
   useBlockOpener: () => (event: MouseEvent, target: {blockId: string; workspaceId?: string}) => {
+    // Record defaultPrevented AT CALL TIME: the chip's own onClick must
+    // never preventDefault before delegating — the real opener's
+    // cmd/middle-click PASSTHROUGH branch relies on the default staying
+    // live so the browser opens the href natively.
+    openCalls.current.push({...target, defaultPrevented: event.defaultPrevented})
     // Emulate the applyNavigationDecision 'navigate' branch so jsdom
     // doesn't attempt real anchor navigation.
     event.preventDefault()
     event.stopPropagation()
-    openCalls.current.push(target)
   },
 }))
 
@@ -63,6 +69,10 @@ const setup = async (): Promise<Harness> => {
     user: {id: 'user-1'},
     extensions: [
       typesFacet.of(defineBlockType({id: 'task', label: 'Task'}), {source: 'test'}),
+      typesFacet.of(
+        defineBlockType({id: 'plumbing', label: 'Plumbing', hideFromCompletion: true}),
+        {source: 'test'},
+      ),
     ],
   })
   repo.setActiveWorkspaceId(WS)
@@ -116,12 +126,33 @@ describe('TypeChipsDecorator', () => {
     expect(recipeLink.getAttribute('href')).toContain(definitionId)
 
     fireEvent.click(recipeLink)
-    expect(openCalls.current).toEqual([{blockId: definitionId, workspaceId: WS}])
+    // A cmd-click must reach the opener with the default still live —
+    // its passthrough branch leaves the native href navigation to the
+    // browser, which an eager preventDefault in the chip would kill.
+    fireEvent.click(recipeLink, {metaKey: true})
+    expect(openCalls.current).toEqual([
+      {blockId: definitionId, workspaceId: WS, defaultPrevented: false},
+      {blockId: definitionId, workspaceId: WS, defaultPrevented: false},
+    ])
 
     // Code-contributed and unregistered types have no definition block
     // to open — their labels must not be anchors.
     expect(screen.getByText('#Task').tagName).not.toBe('A')
     expect(screen.getByText('#ghost-ty…').tagName).not.toBe('A')
+  })
+
+  it('plumbing chips (hideFromCompletion) render without the remove X; normal and unregistered chips keep it', async () => {
+    env = await setup()
+    await renderTaggedBlock(env.repo, ['task', 'plumbing', 'ghost-type'])
+
+    // One click on a plumbing chip's X could strip a load-bearing type
+    // (panel-stack, a prefs container) that the # dropdown can't put
+    // back — those chips are display-only; the property panel is the
+    // removal surface.
+    expect(screen.getByText('#Plumbing')).toBeTruthy()
+    expect(screen.queryByLabelText('Remove Plumbing type')).toBeNull()
+    expect(screen.getByLabelText('Remove Task type')).toBeTruthy()
+    expect(screen.getByLabelText('Remove ghost-ty… type')).toBeTruthy()
   })
 
   it('the remove button removes the type without triggering chip navigation', async () => {
