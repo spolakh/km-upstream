@@ -121,6 +121,53 @@ for (const backend of backends) {
       expect(await store.get('u1', 'media:ck-abc')).toBeNull()
     })
 
+    it('requeue flips failed → pending, resets attempts, re-stamps stagedAt', async () => {
+      await store.stage(stageInput()) // stagedAt 1000
+      await store.promote('u1', 'media:ck-abc')
+      await store.recordAttempt('u1', 'media:ck-abc')
+      await store.recordAttempt('u1', 'media:ck-abc') // attempts 2
+      await store.markFailed('u1', 'media:ck-abc')
+      clock = 3000 // the recovery re-drive stamps a fresh age window
+
+      await store.requeue('u1', 'media:ck-abc')
+
+      expect(await store.get('u1', 'media:ck-abc')).toMatchObject({
+        status: 'pending',
+        attempts: 0, // a clean upload shot
+        stagedAt: 3000, // fresh age window
+      })
+    })
+
+    it('requeue is a no-op on a record that is NOT failed (only failed is recoverable)', async () => {
+      await store.stage(stageInput())
+      await store.promote('u1', 'media:ck-abc') // pending, not failed
+      await store.requeue('u1', 'media:ck-abc')
+      // untouched — a staged/pending record is already on its own path, not re-driven
+      expect((await store.get('u1', 'media:ck-abc'))?.status).toBe('pending')
+    })
+
+    it('requeue with a STALE expectedStagedAt no-ops — a re-paste re-armed the record mid-probe', async () => {
+      await store.stage(stageInput()) // stagedAt 1000
+      await store.promote('u1', 'media:ck-abc')
+      await store.markFailed('u1', 'media:ck-abc')
+      const staleStamp = (await store.get('u1', 'media:ck-abc'))?.stagedAt // 1000
+      // A re-paste re-arms it (status→staged, fresh stamp) during recovery's slow probe.
+      clock = 2000
+      await store.stage(stageInput())
+      // A recovery decision computed from the OLD snapshot must not yank the re-paste to pending.
+      await store.requeue('u1', 'media:ck-abc', staleStamp)
+      expect(await store.get('u1', 'media:ck-abc')).toMatchObject({
+        status: 'staged',
+        attempts: 0,
+        stagedAt: 2000,
+      })
+    })
+
+    it('requeue on an absent record is a no-op (never throws)', async () => {
+      await expect(store.requeue('u1', 'gone')).resolves.toBeUndefined()
+      expect(await store.get('u1', 'gone')).toBeNull()
+    })
+
     it('re-arming in the SAME clock ms still advances stagedAt (strictly monotonic, so the CAS can’t be defeated)', async () => {
       // The clock stays at 1000 across both stages (a same-millisecond re-paste).
       // If stagedAt were a bare Date.now(), the re-arm would reuse 1000 and a stale

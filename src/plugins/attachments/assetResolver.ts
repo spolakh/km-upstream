@@ -36,6 +36,13 @@ export const NO_REMOTE_BLOB_STORE: BlobStore = {
   get: async () => {
     throw new Error('no remote object store configured')
   },
+  // Throw (not a 404-null) so the §9 recovery probe treats local-only as TRANSIENT and
+  // DEFERS — never mistaking "no remote configured" for "path free" and re-driving an
+  // upload there's nowhere to send. (Recovery is gated off in local-only anyway; this
+  // only covers a mode flip mid-lane.)
+  probe: async () => {
+    throw new Error('no remote object store configured')
+  },
   delete: async () => {},
 }
 
@@ -50,6 +57,7 @@ export const NO_REMOTE_BLOB_STORE: BlobStore = {
 export const remoteSyncGated = (remote: BlobStore): BlobStore => ({
   put: (ws, key, bytes) => (isRemoteSyncActive() ? remote : NO_REMOTE_BLOB_STORE).put(ws, key, bytes),
   get: (ws, key) => (isRemoteSyncActive() ? remote : NO_REMOTE_BLOB_STORE).get(ws, key),
+  probe: (ws, key) => (isRemoteSyncActive() ? remote : NO_REMOTE_BLOB_STORE).probe(ws, key),
   delete: (ws, key) => (isRemoteSyncActive() ? remote : NO_REMOTE_BLOB_STORE).delete(ws, key),
 })
 

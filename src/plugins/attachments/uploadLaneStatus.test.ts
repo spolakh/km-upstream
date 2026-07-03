@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { InMemoryByteUploadStore } from './uploadStore.js'
-import { refreshUploadLaneStatus, uploadLaneDiagnosticSource } from './uploadLaneStatus.js'
+import { RETRY_UPLOADS_ACTION_ID, refreshUploadLaneStatus, uploadLaneDiagnosticSource } from './uploadLaneStatus.js'
 
 const storeWithFailures = async (n: number): Promise<InMemoryByteUploadStore> => {
   const store = new InMemoryByteUploadStore()
@@ -31,6 +31,8 @@ describe('uploadLaneDiagnosticSource', () => {
     const snap = uploadLaneDiagnosticSource.getSnapshot()
     expect(snap).toMatchObject({ severity: 'warning', nudge: true })
     expect(snap?.summary).toBe('2 media uploads failed')
+    // The §9 explicit-user-retry affordance: a "Retry" button wired to the recovery action.
+    expect(snap).toMatchObject({ actionId: RETRY_UPLOADS_ACTION_ID, actionLabel: 'Retry' })
 
     // No change → same reference (the useSyncExternalStore contract) and no extra notify.
     await refreshUploadLaneStatus(await storeWithFailures(2), 'u1')

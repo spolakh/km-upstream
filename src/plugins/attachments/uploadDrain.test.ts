@@ -43,6 +43,9 @@ class FakeBlobStore implements BlobStore {
     if (this.existing) return this.existing
     throw new Error('not used in drain tests')
   }
+  async probe(): Promise<Uint8Array<ArrayBuffer> | null> {
+    throw new Error('the drain uses put/get, never probe (that is the §9 recovery pass)')
+  }
   async delete(): Promise<void> {}
 }
 

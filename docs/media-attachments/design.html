@@ -122,11 +122,21 @@ the walk, so a stable-ordered failing prefix can't shadow the healthier tail), a
 reconnect / a slow sweep. Durable origin storage (§8) is the boot-time origin-wide
 <code>requestPersistentStorage</code>, not a per-store call. <strong>§16 reference-permanent GC remains
 deferred</strong> — until it lands, a never-promoted <code>staged</code> orphan and its OPFS bytes are
-retained (never reaped), and a <code>failed</code> upload record is recoverable only by re-paste (no §9
-recovery actor yet).
-Last verified against code 2026-07-02. Treat as current intent. The least-settled part is the byte-lane
+retained (never reaped). <strong>The §9 failed-upload recovery actor HAS landed</strong>
+(<code>src/plugins/attachments/uploadRecovery.ts</code>), <em>user-triggered</em> (a deliberate
+simplification over the spec'd automatic sweep): a <code>failed</code> record is surfaced as a diagnostics
+warning with a <strong>Retry</strong> button (mirroring how block-sync rejections surface via
+<code>ps_crud_rejected</code>), and Retry runs a cheap content-path <code>probe()</code> that 3-ways it
+(absent → <code>requeue</code> failed→pending for the drain; present + hash-verifies → delete the record,
+no re-upload; present + mismatch → stay <code>failed</code>, §17). Transient failures stay
+<code>pending</code> — the drain re-drives them automatically on reconnect/refocus — and only cross into
+<code>failed</code> if they persist past a ~7-day age backstop; so recovery only ever re-drives the
+quarantined permanent-ish set (plus that rare aged-out transient), for which manual retry (not an automatic
+re-drive loop) is the right, and the codebase-consistent, UX. The user is the rate limiter, so there is no
+automatic re-drive bound.
+Last verified against code 2026-07-03. Treat as current intent. The least-settled part is the byte-lane
 lifecycle / failure-recovery machinery (§8–§9, §16): the happy path and the crypto / threat model are
-solid; the recovery edges are where the spec is still hardening.
+solid; §16 GC is the remaining recovery edge still on the spec.
 </aside>
 
 <div class="info">
@@ -869,16 +879,20 @@ so it can't strip a co-referencing block's bytes or strand its route to the serv
   co-referencing block's route to the server. In the common capture-dedup path the asset is a <em>single</em>
   block with a single record (§11), so this gating is moot; the shared case arises only from a block copy /
   import of a not-yet-uploaded asset. And
-  <code>failed</code> is <strong>recoverable</strong>, not a dead end — but recovery is
-  <strong>bounded and cheap, never the hot loop the state exists to stop</strong>: a <code>failed</code>
-  record is re-attempted on app start, on reconnect, by an explicit user retry, and on a <strong>slow
-  periodic sweep</strong> (a bodiless <code>GET</code> every few hours — so a <em>long-lived online tab</em>
-  still heals once the path frees, rather than waiting on a restart it may never get). Even against a
-  <em>persistent</em> poisoner the cost is one sparse, bodiless probe per such event — never the tight
-  correction loop, and no new lane to walk it: the down-lane fetches bytes that are <em>absent</em>
-  locally, whereas a <code>failed</code> record's bytes are <em>present</em>, so the down-lane would never
-  visit it; this re-attempt sweep is the up-lane's own. Each re-attempt first does a <strong>cheap direct
-  RLS-gated <code>GET</code> of the content path</strong> (reads are direct, §8 — it streams no body) and
+  <code>failed</code> is <strong>recoverable</strong>, not a dead end — via an <strong>explicit user
+  retry</strong>. A <code>failed</code> record surfaces as a diagnostics warning with a <strong>Retry</strong>
+  button (the same shape block-sync rejections use via <code>ps_crud_rejected</code>), and Retry runs a cheap
+  recovery pass — never the hot loop the state exists to stop. This is deliberately <em>user-triggered</em>, a
+  simplification over the earlier spec's automatic app-start / reconnect / slow-periodic-sweep recovery:
+  recovery only ever touches the quarantined <code>failed</code> set, because a <em>transient</em> failure stays
+  <code>pending</code> — the drain re-drives it automatically on reconnect/refocus (below) — and reaches
+  <code>failed</code> only if it persists past the ~7-day age backstop. So the automatic machinery would only ever re-drive the permanent-ish rejects, for
+  which surfacing + manual retry is both sufficient and consistent with the rest of the app. There's no new lane
+  to walk it either: the down-lane fetches bytes that are <em>absent</em> locally, whereas a <code>failed</code>
+  record's bytes are <em>present</em>, so the down-lane would never visit it; this re-attempt is the up-lane's
+  own. Retry first does a <strong>direct
+  RLS-gated <code>GET</code> of the content path</strong> (reads are direct, §8 — a 404 when the path is free,
+  the object's bytes when it's occupied) and
   branches on what's there: object <strong>absent</strong> → the path is free, drain normally → clears;
   <strong>present and hash-verifies</strong> → another device already materialized it → delete the record,
   no upload → clears (the bytes are now eviction-eligible like any replicated bytes — note this drops the
@@ -889,10 +903,13 @@ so it can't strip a co-referencing block's bytes or strand its route to the serv
   never a silent loss); <strong>present but hash-mismatches</strong> → still poisoned → stays
   <code>failed</code>. This
   covers both causes without conflating them — a <em>poisoned</em> path heals when the probe finds it free or
-  materialized; a <em>shape-rejected</em> body (a stale / buggy client) heals only once the client is fixed,
-  whose post-upgrade re-attempt re-encodes correctly, so until then it stays surfaced-for-discard rather than
-  re-PUTting the same bad bytes. Only <em>permanent</em> rejections land in <code>failed</code>; transient
-  failures stay <code>pending</code> and retry with backoff (below). &quot;Upload in progress&quot; is an
+  materialized; a <em>shape-rejected</em> body (a stale / buggy client) heals once the client is fixed, whose
+  post-upgrade retry re-encodes correctly. The absent-path re-drive is the one branch that costs a PUT, but
+  because Retry is user-driven the <em>user</em> is the rate limiter — there's no automatic attempt cap, and a
+  persistent poisoner never triggers a re-drive (it's present+mismatch → a <code>GET</code> + hash-check, never
+  a PUT; the GET does read the object body to verify, so a large poisoned object isn't free, but the user drives
+  the cadence). Permanent rejections land in <code>failed</code> (as does a transient that outlives the ~7-day
+  age backstop); most transient failures stay <code>pending</code> and retry with backoff (below). &quot;Upload in progress&quot; is an
   <em>in-memory</em> single-flight guard, not a
   persisted state — a crash mid-PUT leaves the record <code>pending</code> and the single-owner drain (§8)
   re-PUTs (first-write-wins idempotent, §10.1), so no persisted <code>uploading</code> state is needed. Capture writes the record as
@@ -940,8 +957,7 @@ so it can't strip a co-referencing block's bytes or strand its route to the serv
 
 <div class="info">
 <strong>Cross-tab execution: the background lanes are single-owner; capture is per-tab.</strong> The
-<em>background</em> work — the down-lane replicator, the up-lane drain (<em>and its periodic
-re-attempt sweep</em> for <code>failed</code> records, §9), and the boot reconciler — runs under
+<em>background</em> work — the down-lane replicator, the up-lane drain, and the boot reconciler — runs under
 one tab elected by a <strong>Web Lock</strong> (<code>navigator.locks.request</code>, §8), so multiple open
 tabs don't multiply egress or redundantly re-PUT (the lock hands off automatically when that tab closes; no
 SharedWorker required). <em>Capture</em> stays per-tab: any tab can paste, staging its byte record and
@@ -968,7 +984,7 @@ atomic). The bytes aren't in that tx and don't need to be: block delete is a res
   <li><strong>Redo</strong> un-soft-deletes the block (pure DB). If the upload already happened the
     immutable object is <em>still there</em> — nothing to re-upload; if not, the retained byte-store bytes
     (never dropped on undo) resume draining — and if the record had reached <code>failed</code>, redo treats
-    it as a fresh trigger to re-attempt (the §9 opportunistic re-attempt), so a restored block never sits in
+    it as a fresh trigger to re-attempt (re-staged like a fresh paste), so a restored block never sits in
     <code>failed</code> without a path forward.</li>
   <li><strong>The object</strong> from an undone-then-not-redone paste is <em>not</em> an orphan — a
     soft-deleted block still references its hash, so §16's reference-counted sweep retains it like any
@@ -999,7 +1015,8 @@ locally, so the down-lane legitimately visits it), so a <em>transient</em> 404 (
 the §10.1 writer-delete → re-PUT correction window) self-heals rather than sticking; (b) the embed
 <strong>self-heals</strong> if the origin ever uploads — the origin's own durable local up-lane record
 (<code>staged</code>/<code>pending</code>, or a <code>failed</code> record, which keeps its exempt bytes and
-re-attempts opportunistically once a poisoned path frees, §9) carries the intent and drains on reconnect. Automatic destruction is reserved for orphan <em>objects</em> (bytes with no
+re-attempts on the user's §9 Retry once a poisoned path frees) carries the intent — the staged/pending records
+drain on reconnect, a failed one on that Retry. Automatic destruction is reserved for orphan <em>objects</em> (bytes with no
 block — safe to delete); an orphan <em>block</em> is never auto-deleted (its children are real content),
 so the only unrecoverable case — origin gone before upload — is honestly shown as unavailable, never
 papered over by deleting user content.</div>
@@ -1218,7 +1235,7 @@ hand-roll is now the platform's.)</div>
   accidentally corrupt path is correctable by a writer delete + re-upload (§10 writer-delete RLS), but an
   <em>active</em> member-poisoner can DoS a known asset (delete-then-re-PUT doesn't terminate against them),
   so after a bounded number of correction cycles the client moves its §9 record to <code>failed</code> (§9 —
-  keeps its exempt bytes, surfaces for discard, re-attempts opportunistically once the path frees): a named
+  keeps its exempt bytes, surfaces for discard and user retry once the path frees): a named
   tradeoff in §17.</p>
 
 <p>Per the project's Supabase rule, the bucket + its RLS land in one migration with
@@ -1630,8 +1647,8 @@ vNext; the v1 commitment is only the reserved property + audience flag.
       &quot;verify body matches path&quot; defense is foreclosed (the guard has no key). It stays a
       <em>broken image, never data loss</em>: the honest uploader's bytes are un-uploaded, so their up-lane
       record lands in <code>failed</code> which <strong>keeps the exempt bytes</strong> (§9) — and re-attempts
-      opportunistically (§9) to finish the upload once the poisoned path is freed or the object materializes
-      elsewhere, so the asset self-heals rather than being lost.</td></tr>
+      on the user's §9 Retry to finish the upload once the poisoned path is freed or the object materializes
+      elsewhere, so the asset can self-heal rather than being lost.</td></tr>
 <tr><td>Concurrent offline replace of one embed</td>
     <td>Two devices replacing the same image offline each mint a new immutable asset block; on reconnect
       the embed pointer (plain block content) resolves last-writer-wins, so one replacement is silently

@@ -126,8 +126,9 @@ const retryOrFail = async (
  *  WITHOUT burning the bounded attempt budget. The reconciler re-arms the drain on
  *  every `online`/`visible` event, so a flaky-network paste retried a handful of
  *  times would otherwise exhaust `maxAttempts` and quarantine a perfectly good upload
- *  in seconds — `failed` is terminal (nothing re-drains it). Only the AGE backstop
- *  applies here; past it, give up. */
+ *  in seconds — `failed` leaves the drain's automatic path (only an explicit user Retry
+ *  re-drives it, §9). Only the AGE backstop applies here; past it, give up (an upload
+ *  transient for ~7 days lands in `failed`, surfaced with Retry like any other). */
 const deferTransientOrFail = async (
   userId: string,
   rec: ByteUploadRecord,

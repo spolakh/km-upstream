@@ -183,6 +183,46 @@ describe('SupabaseBlobStore.get', () => {
   })
 })
 
+describe('SupabaseBlobStore.probe (the §9 recovery presence probe)', () => {
+  it('returns the bytes when the content path is occupied (→ decode + hash-verify)', async () => {
+    const bytes = new Uint8Array([4, 5, 6])
+    const { store, download } = makeRwStore({ download: async () => ({ data: new Blob([bytes]), error: null }) })
+    expect(await store.probe('ws', 'ck')).toEqual(bytes)
+    expect(download).toHaveBeenCalledWith('ws/ck')
+  })
+
+  it('returns null on a DEFINITIVE 404 (numeric statusCode shape) — the path is free to re-drive', async () => {
+    // supabase flattens the HTTP line to 400 and puts the semantic code in statusCode.
+    const { store } = makeRwStore({
+      download: async () => ({ data: null, error: { status: 400, statusCode: '404', message: 'Object not found' } }),
+    })
+    expect(await store.probe('ws', 'ck')).toBeNull()
+  })
+
+  it('returns null on a symbolic not-found code (NoSuchKey / real 404)', async () => {
+    for (const [statusCode, status] of [['NoSuchKey', 404], ['NotFound', 404]] as const) {
+      const { store } = makeRwStore({ download: async () => ({ data: null, error: { status, statusCode } }) })
+      expect(await store.probe('ws', 'ck')).toBeNull()
+    }
+  })
+
+  it('THROWS on an ambiguous error (offline / 5xx / denied) so recovery defers, never re-drives', async () => {
+    for (const error of [
+      { status: 503, statusCode: '503', message: '5xx' }, // server down
+      { status: 403, statusCode: 'AccessDenied' }, // a genuine 403 defers (a denied READ is 404-shaped — see probe doc)
+      { message: 'network' }, // statusless offline error
+    ]) {
+      const { store } = makeRwStore({ download: async () => ({ data: null, error }) })
+      await expect(store.probe('ws', 'ck')).rejects.toBe(error)
+    }
+  })
+
+  it('treats no-error + no-body as absent (null), not a throw', async () => {
+    const { store } = makeRwStore({ download: async () => ({ data: null, error: null }) })
+    expect(await store.probe('ws', 'ck')).toBeNull()
+  })
+})
+
 describe('SupabaseBlobStore.delete', () => {
   it('removes <ws>/<key> from the attachments bucket', async () => {
     const { store, from, remove } = makeRwStore({ remove: async () => ({ data: [{}], error: null }) })

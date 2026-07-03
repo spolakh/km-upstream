@@ -27,6 +27,7 @@ import {
   insertImageNormalModeAction,
   insertImageToolbarItem,
 } from './insertImageContribution.js'
+import { retryFailedUploadsAction } from './retryUploadsAction.js'
 import { uploadLaneDiagnosticSource } from './uploadLaneStatus.js'
 import {
   ASSETS_TYPE_CONTRIBUTION,
@@ -60,6 +61,9 @@ export const attachmentsPlugin: AppExtension = systemToggle({
   actionsFacet.of(insertImageAction, { source: 'attachments' }),
   actionsFacet.of(insertImageNormalModeAction, { source: 'attachments' }),
   mobileKeyboardToolbarItemsFacet.of(insertImageToolbarItem, { source: 'attachments', precedence: 50 }),
+  // The §9 explicit-user-retry surface: the failed-uploads diagnostics warning's Retry
+  // button (and a command-palette entry) force-run recovery over the failed records.
+  actionsFacet.of(retryFailedUploadsAction, { source: 'attachments' }),
   // Boot recovery for crashed captures (§9) — gated on initial-sync settle.
   appMountsFacet.of({ id: 'attachments.upload-reconciler', component: MediaUploadReconciler }, { source: 'attachments' }),
   // Background replication of the active workspace's bytes to the local store (§8/§9).

@@ -12,9 +12,12 @@
  *             `staged` record whose block is absent past the settled checkpoint, so
  *             we never upload bytes for a block that doesn't exist.
  *   pending — flipped from `staged` AFTER the tx commits (`promote`). Drainable.
- *   failed  — a permanent upload rejection, or retries exhausted (§9 recovery can
- *             requeue it). A confirmed upload DELETES the record (no terminal
- *             "cleared" value is retained).
+ *   failed  — a permanent upload rejection, or retries exhausted. NOT terminal:
+ *             surfaced as the §9 diagnostics warning, and the user's Retry runs the
+ *             recovery actor ({@link import('./uploadRecovery.js')}), which probes the
+ *             content path and, when it's free, `requeue`s the record back to `pending`
+ *             for the drain. A confirmed upload DELETES the record (no terminal "cleared"
+ *             value is retained).
  *
  * Keyed by `(user_id, asset_block_id)` — `user_id` is load-bearing: the OPFS byte
  * store and this queue are shared across the browser profile's accounts but drain
@@ -91,6 +94,15 @@ export interface ByteUploadStore {
    *  (see {@link recordAttempt}) — otherwise a stale drain buries a live re-paste in
    *  `failed`, which nothing re-drains. */
   markFailed(userId: string, assetBlockId: string, expectedStagedAt?: number): Promise<void>
+  /** failed → pending — the §9 recovery re-drive: the probe found the content path
+   *  FREE, so hand the record back to the drain to re-upload the local bytes. Resets
+   *  {@link ByteUploadRecord.attempts} to 0 (a fresh upload shot) and re-stamps
+   *  `stagedAt` from the store clock (a fresh age window). No-op if absent, if the record
+   *  isn't `failed` (nothing to recover — e.g. a re-paste already re-armed it to
+   *  `staged`/`pending`), or if it was re-armed since `expectedStagedAt` (the same CAS the
+   *  drain's terminal writes use — a stale recovery decision must not clobber a live
+   *  re-paste). */
+  requeue(userId: string, assetBlockId: string, expectedStagedAt?: number): Promise<void>
   /** Remove the record (a confirmed upload). */
   delete(userId: string, assetBlockId: string): Promise<void>
   /** Drop every record FOR THIS USER (account isolation — the store is shared
@@ -122,6 +134,22 @@ const stagedRecord = (input: StageInput, stagedAt: number): ByteUploadRecord => 
  *  `stagedAt` and skip the write when the live stamp has moved. */
 const supersededByReArm = (r: ByteUploadRecord, expectedStagedAt: number | undefined): boolean =>
   expectedStagedAt !== undefined && r.stagedAt !== expectedStagedAt
+
+/** The RMW for {@link ByteUploadStore.requeue} (shared by both store impls, so the
+ *  in-memory and IndexedDB paths can't drift). A `failed` record whose CAS stamp still
+ *  matches → `pending` for a fresh drain: attempts reset (a clean upload shot) and
+ *  `stagedAt` re-stamped from `clock` (a fresh age window + a new CAS stamp). Left
+ *  untouched if superseded by a re-paste, or if it isn't `failed` (only `failed` is
+ *  recoverable — a `staged`/`pending` record is already on its own path and must not be
+ *  yanked to `pending` here). */
+const requeued = (
+  r: ByteUploadRecord,
+  expectedStagedAt: number | undefined,
+  clock: () => number,
+): ByteUploadRecord =>
+  supersededByReArm(r, expectedStagedAt) || r.status !== 'failed'
+    ? r
+    : { ...r, status: 'pending', attempts: 0, stagedAt: clock() }
 
 /** Wrap a wall clock so successive reads STRICTLY increase, even within one
  *  millisecond. The `stagedAt` CAS ({@link supersededByReArm}) keys on stamp
@@ -197,6 +225,10 @@ export class InMemoryByteUploadStore implements ByteUploadStore {
     this.mutate(userId, assetBlockId, r =>
       supersededByReArm(r, expectedStagedAt) ? r : { ...r, status: 'failed' },
     )
+  }
+
+  async requeue(userId: string, assetBlockId: string, expectedStagedAt?: number): Promise<void> {
+    this.mutate(userId, assetBlockId, r => requeued(r, expectedStagedAt, this.clock))
   }
 
   async delete(userId: string, assetBlockId: string): Promise<void> {
@@ -285,6 +317,10 @@ export class IndexedDbByteUploadStore implements ByteUploadStore {
     await this.mutate(userId, assetBlockId, r =>
       supersededByReArm(r, expectedStagedAt) ? r : { ...r, status: 'failed' },
     )
+  }
+
+  async requeue(userId: string, assetBlockId: string, expectedStagedAt?: number): Promise<void> {
+    await this.mutate(userId, assetBlockId, r => requeued(r, expectedStagedAt, this.clock))
   }
 
   async delete(userId: string, assetBlockId: string): Promise<void> {
