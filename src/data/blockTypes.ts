@@ -52,7 +52,7 @@ export const KERNEL_TYPE_CONTRIBUTIONS: readonly TypeContribution[] = [
   // Panels/user pages ARE plumbing for the # dropdown, but their chips
   // are informative when the block itself is on screen — keep those.
   defineBlockType({id: PANEL_TYPE, label: 'Panel', hideFromCompletion: true}),
-  defineBlockType({id: PANEL_STACK_TYPE, label: 'Panel stack', ...INFRASTRUCTURE_TYPE_DISPLAY}),
+  defineBlockType({id: PANEL_STACK_TYPE, label: 'Panel stack', hideFromCompletion: true}),
   defineBlockType({
     id: PROPERTY_SCHEMA_TYPE,
     label: 'Property schema',
