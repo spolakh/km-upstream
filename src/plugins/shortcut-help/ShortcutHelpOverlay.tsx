@@ -112,7 +112,11 @@ const MatchPanel = ({matches}: {matches: readonly HelpBinding[]}) => {
   const others = matches.filter(binding => binding !== winner)
   const handler = describeHandler(winner.action)
   return (
-    <div className="rounded-md border bg-muted/40 p-3">
+    // min-w-0: DialogContent is a grid, and a grid item's default
+    // min-width:auto lets the handler-source <pre>'s unbreakable lines
+    // widen the track past the dialog — the pre must scroll inside
+    // instead.
+    <div className="min-w-0 rounded-md border bg-muted/40 p-3">
       <div className="flex items-center justify-between gap-2">
         <span className="text-sm font-medium">{winner.action.description}</span>
         <BindingChord binding={winner}/>
@@ -127,7 +131,7 @@ const MatchPanel = ({matches}: {matches: readonly HelpBinding[]}) => {
         <summary className="cursor-pointer text-xs text-muted-foreground">
           Handler source{handler.name ? ` — ${handler.name}()` : ''}
         </summary>
-        <pre className="mt-1 max-h-48 overflow-auto rounded bg-muted p-2 text-[11px] leading-snug">
+        <pre className="mt-1 max-h-48 max-w-full overflow-auto rounded bg-muted p-2 text-[11px] leading-snug">
           {handler.source}
         </pre>
       </details>
@@ -224,7 +228,7 @@ export function ShortcutHelpOverlay() {
           <DialogDescription>{status}</DialogDescription>
         </DialogHeader>
         {state.matches && <MatchPanel matches={state.matches}/>}
-        <div className="max-h-[60vh] overflow-y-auto sm:columns-2 sm:gap-6">
+        <div className="min-w-0 max-h-[60vh] overflow-y-auto sm:columns-2 sm:gap-6">
           {visibleGroups.map(group => (
             <ContextGroupSection key={group.config.type} group={group} onSelect={selectBinding}/>
           ))}
