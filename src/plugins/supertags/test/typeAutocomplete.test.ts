@@ -7,7 +7,7 @@ import type { TypeContribution } from '@/data/api'
 import { PAGE_TYPE } from '@/data/blockTypes'
 import {
   buildTypeTagCandidates,
-  findTaggableTypeByName,
+  findCompletableTypeByName,
   matchHashTrigger,
   planTriggerRestore,
   planTriggerStrip,
@@ -47,8 +47,8 @@ const existingIds = (out: readonly TypeTagCandidate[]): string[] =>
 const TASK: TypeContribution = {id: 'uuid-task', label: 'Task'}
 const TRIP: TypeContribution = {id: 'uuid-trip', label: 'Trip', description: 'A journey'}
 const TODO: TypeContribution = {id: 'todo', label: 'Todo'}
-const PAGE: TypeContribution = {id: PAGE_TYPE, label: 'Page', structural: true}
-const PREFS: TypeContribution = {id: 'quick-find-ui-state', label: 'Quick find', structural: true}
+const PAGE: TypeContribution = {id: PAGE_TYPE, label: 'Page', hideFromCompletion: true, hideFromBlockDisplay: true}
+const PREFS: TypeContribution = {id: 'quick-find-ui-state', label: 'Quick find', hideFromCompletion: true, hideFromBlockDisplay: true}
 
 describe('buildTypeTagCandidates', () => {
   it('lists all visible types for an empty query, without a create sentinel', () => {
@@ -86,7 +86,7 @@ describe('buildTypeTagCandidates', () => {
     expect(existingIds(out)).toEqual(['uuid-trip'])
   })
 
-  it('excludes structural contributions — kernel structure and plugin plumbing alike', () => {
+  it('excludes hideFromCompletion contributions — kernel structure and plugin plumbing alike', () => {
     const out = buildTypeTagCandidates({
       registry: registryOf(PAGE, PREFS, TASK),
       currentTypeIds: [],
@@ -127,7 +127,7 @@ describe('buildTypeTagCandidates', () => {
 
   it('an exact match on a STRUCTURAL label is not a dead end — create is offered', () => {
     // Without this, `#page` / `#user` would silently show nothing:
-    // the structural type never appears as a candidate, and its label
+    // the hidden-from-completion type never appears as a candidate, and its label
     // suppressing the sentinel would leave zero options.
     const out = buildTypeTagCandidates({
       registry: registryOf(PAGE),
@@ -148,9 +148,9 @@ describe('buildTypeTagCandidates', () => {
 })
 
 describe('visibleTagTypeIds', () => {
-  const HIDDEN: TypeContribution = {id: 'uuid-secret', label: 'Secret', hideTag: true}
+  const HIDDEN: TypeContribution = {id: 'uuid-secret', label: 'Secret', hideFromBlockDisplay: true}
 
-  it('drops structural kernel types and hideTag opt-outs, keeps the rest in order', () => {
+  it('drops infrastructure kernel types and hideFromBlockDisplay opt-outs, keeps the rest in order', () => {
     const registry = registryOf(TASK, TRIP, PAGE, HIDDEN)
     expect(visibleTagTypeIds(
       ['uuid-task', PAGE_TYPE, 'uuid-secret', 'uuid-trip'], registry))
@@ -161,7 +161,7 @@ describe('visibleTagTypeIds', () => {
     expect(visibleTagTypeIds(['uuid-unknown'], registryOf())).toEqual(['uuid-unknown'])
   })
 
-  it('hideTag types stay offerable in the # autocomplete', () => {
+  it('hideFromBlockDisplay types stay offerable in the # autocomplete', () => {
     const out = buildTypeTagCandidates({
       registry: registryOf(HIDDEN),
       currentTypeIds: [],
@@ -299,13 +299,13 @@ describe('typeTagCompletionSource', () => {
   })
 })
 
-describe('findTaggableTypeByName', () => {
-  it('matches label and id case-insensitively, skipping structural types', () => {
+describe('findCompletableTypeByName', () => {
+  it('matches label and id case-insensitively, skipping hideFromCompletion types', () => {
     const registry = registryOf(TASK, PAGE)
-    expect(findTaggableTypeByName(registry, 'tAsK')).toBe(TASK)
-    expect(findTaggableTypeByName(registry, 'uuid-task')).toBe(TASK)
-    expect(findTaggableTypeByName(registry, 'Page')).toBeUndefined()
-    expect(findTaggableTypeByName(registry, '')).toBeUndefined()
+    expect(findCompletableTypeByName(registry, 'tAsK')).toBe(TASK)
+    expect(findCompletableTypeByName(registry, 'uuid-task')).toBe(TASK)
+    expect(findCompletableTypeByName(registry, 'Page')).toBeUndefined()
+    expect(findCompletableTypeByName(registry, '')).toBeUndefined()
   })
 })
 

@@ -218,10 +218,10 @@ export const blockTypePropertiesProp = defineProperty<readonly string[]>('block-
   changeScope: ChangeScope.BlockDefault,
 })
 
-/** Hide this type from a block's trailing tag-chip display (the
- *  supertags `#type` row). Display-only — the type stays taggable and
- *  visible in pickers/panel. Lifted onto `TypeContribution.hideTag`. */
-export const blockTypeHideTagProp = defineProperty<boolean>('block-type:hide-tag', {
+/** Don't render this type's chip on blocks (the supertags `#type`
+ *  row). Display-only — the type stays taggable and visible in
+ *  pickers/panel. Lifted onto `TypeContribution.hideFromBlockDisplay`. */
+export const blockTypeHideFromBlockDisplayProp = defineProperty<boolean>('block-type:hide-from-block-display', {
   codec: codecs.boolean,
   defaultValue: false,
   changeScope: ChangeScope.BlockDefault,
@@ -480,7 +480,7 @@ export const KERNEL_PROPERTY_SCHEMAS: ReadonlyArray<PropertySchema<unknown>> = [
   blockTypeLabelProp,
   blockTypeDescriptionProp,
   blockTypePropertiesProp,
-  blockTypeHideTagProp,
+  blockTypeHideFromBlockDisplayProp,
   blockTypeColorProp,
   // user page fields
   userIdProp,

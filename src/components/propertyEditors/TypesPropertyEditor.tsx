@@ -11,7 +11,7 @@ interface TypeOption {
   id: string
   label: string
   description?: string
-  structural: boolean
+  hideFromCompletion: boolean
 }
 
 const normalizedTypes = (value: readonly string[]): readonly string[] =>
@@ -48,7 +48,7 @@ export function TypesPropertyEditor({
     id: type.id,
     label: type.label ?? type.id,
     description: type.description,
-    structural: type.structural === true,
+    hideFromCompletion: type.hideFromCompletion === true,
   })), [typesRegistry])
   const optionsById = useMemo(() => new Map(options.map(option => [option.id, option])), [options])
   const queryText = query.trim().toLowerCase()
@@ -76,16 +76,17 @@ export function TypesPropertyEditor({
   }
 
   const commitCurrentQuery = (): boolean => {
-    // A user-defined type can share a label with a structural kernel/
-    // plugin type ("page", "Media"). Typing that label into a TYPE
-    // picker almost always means the taggable one — preferring it
-    // matches the `#` autocomplete's resolution (the ref-target picker
-    // currently resolves such collisions by registration order — a
-    // known gap, not a policy to be consistent with).
+    // A user-defined type can share a label with an infrastructure
+    // kernel/plugin type ("page", "Media"). Typing that label into a
+    // TYPE picker almost always means the completion-offered one —
+    // preferring it matches the `#` autocomplete's resolution (the
+    // ref-target picker currently resolves such collisions by
+    // registration order — a known gap, not a policy to be consistent
+    // with).
     const exactMatches = options.filter(option =>
       option.id.toLowerCase() === queryText ||
       option.label.toLowerCase() === queryText)
-    const exact = exactMatches.find(option => !option.structural) ?? exactMatches[0]
+    const exact = exactMatches.find(option => !option.hideFromCompletion) ?? exactMatches[0]
     // An explicit highlight (arrows / hover) beats the exact-match
     // shortcut — committing something other than the highlighted row
     // contradicts what the user is looking at.

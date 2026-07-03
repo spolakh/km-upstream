@@ -9,9 +9,9 @@
  *   - a block's types render as trailing `#label` chips after its
  *     content, each with a remove button.
  *
- *  `structural` contributions (kernel structure, plugin plumbing) are
- *  hidden from both surfaces; `hideTag` types from chips only — see
- *  `TypeContribution`. */
+ *  Display opt-outs: `hideFromCompletion` keeps a type out of the `#`
+ *  dropdown, `hideFromBlockDisplay` out of the chip row; infrastructure
+ *  types set both — see `TypeContribution`. */
 
 import { codeMirrorExtensionsFacet } from '@/editor/codeMirrorExtensions.js'
 import { blockContentDecoratorsFacet } from '@/extensions/blockInteraction.js'
@@ -26,5 +26,11 @@ export const supertagsPlugin: AppExtension = systemToggle({
   description: 'Type # in a block to tag it with a type (or create one); a block\'s types show as #chips at the end of its content. For your own types, chip color and visibility live on the type\'s definition block; built-in types declare them in code.',
 }).of([
   codeMirrorExtensionsFacet.of(supertagsCodeMirrorExtensions, {source: 'supertags'}),
-  blockContentDecoratorsFacet.of(typeChipsDecoratorContribution, {source: 'supertags'}),
+  // Negative precedence → innermost decorator: the chip row attaches
+  // directly to the text renderer, and every other decorator's chrome
+  // (geo's map, counters, badges) wraps OUTSIDE the [text + chips]
+  // unit. Ordered the other way, the chips wrapper's fit-content
+  // column would squeeze full-width chrome (a map iframe has no
+  // intrinsic width) down to the text's width.
+  blockContentDecoratorsFacet.of(typeChipsDecoratorContribution, {source: 'supertags', precedence: -100}),
 ])

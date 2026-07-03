@@ -4,7 +4,8 @@
  *  `src/editor/autocomplete.ts` (which also themes the dropdown).
  *
  *  Candidates come from the live merged type registry (`repo.types` —
- *  kernel + plugin + user-defined, minus `structural` plumbing).
+ *  kernel + plugin + user-defined, minus `hideFromCompletion`
+ *  plumbing).
  *
  *  Pick semantics: the source deletes the `#query` trigger text from
  *  the view optimistically; `pickType` here commits the tag AND the
@@ -38,7 +39,7 @@ import { createTypeBlock } from '@/data/typeExtraction'
 import { showError } from '@/utils/toast'
 import {
   buildTypeTagCandidates,
-  findTaggableTypeByName,
+  findCompletableTypeByName,
   planTriggerRestore,
   planTriggerStrip,
   typeTagCompletionSource,
@@ -91,7 +92,7 @@ export const buildTypeTagSource = ({repo, block}: CodeMirrorExtensionContext): C
       }
       // Create flow — reuse a same-named type that published since the
       // candidate list was built, else mint the definition block.
-      const existing = findTaggableTypeByName(repo.types, candidate.label)
+      const existing = findCompletableTypeByName(repo.types, candidate.label)
       let typeId = existing?.id
       if (!typeId) {
         const workspaceId = block.peek()?.workspaceId ?? repo.activeWorkspaceId

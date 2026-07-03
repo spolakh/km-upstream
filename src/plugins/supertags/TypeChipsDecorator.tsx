@@ -9,7 +9,8 @@
  *  resolve-context and slot identity (the `#` pick flow stays correct
  *  across that remount because its tag write is cache-coherent — see
  *  codeMirrorExtensions.ts). What the unconditional wrap DOES buy:
- *  chip visibility driven by the registry (`hideTag` edits, late type
+ *  chip visibility driven by the registry (`hideFromBlockDisplay`
+ *  edits, late type
  *  publication) re-renders in place instead of re-resolving decorator
  *  gates, and if the renderer's slot identity is ever stabilized the
  *  no-remount invariant holds here without changes. The WeakMap cache
@@ -141,8 +142,15 @@ const TypeChipsDecorator = ({block, Inner}: TypeChipsDecoratorProps) => {
       {/* No chips → full row, exactly the undecorated layout (a fit-
           content editor on an EMPTY block collapses to ~0px and hides
           the caret). With chips → intrinsic width so they hug the end
-          of the text, with a 2rem floor as the caret's landing strip. */}
-      <div className={visible.length > 0 ? 'min-w-8 max-w-full' : 'w-full'}>
+          of the text, with a 2rem floor as the caret's landing strip.
+          Embed CONTENT renderers (video player etc.) sit inside this
+          wrapper even though the decorator is innermost — a 100%-width
+          iframe/video has no intrinsic width, so fit-content would
+          collapse it; give those the full row and let the chips wrap
+          below. */}
+      <div className={visible.length > 0
+        ? 'min-w-8 max-w-full has-[iframe]:w-full has-[video]:w-full'
+        : 'w-full'}>
         <Inner block={block}/>
       </div>
       {visible.length > 0 && <TypeChips block={block} typeIds={visible} registry={registry}/>}

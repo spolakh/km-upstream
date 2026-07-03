@@ -30,6 +30,6 @@ export const todoType = defineBlockType({
   // The checkbox renderer already conveys todo-ness on every todo
   // block — a trailing #Todo tag chip would be pure duplication. Still
   // taggable via # and fully visible in the property panel.
-  hideTag: true,
+  hideFromBlockDisplay: true,
   properties: [statusProp],
 })

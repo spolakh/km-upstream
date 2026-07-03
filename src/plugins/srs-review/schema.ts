@@ -1,4 +1,4 @@
-import { ChangeScope, codecs, defineBlockType, defineProperty } from '@/data/api'
+import { ChangeScope, codecs, defineBlockType, defineProperty, INFRASTRUCTURE_TYPE_DISPLAY } from '@/data/api'
 
 export const SRS_REVIEW_DECK_TYPE = 'srs-review-deck'
 
@@ -60,6 +60,6 @@ export const reviewProgressProp = defineProperty<ReviewProgress | null>('srs-rev
 export const srsReviewProgressType = defineBlockType({
   id: SRS_REVIEW_PROGRESS_TYPE,
   label: 'SRS review progress',
-  structural: true,
+  ...INFRASTRUCTURE_TYPE_DISPLAY,
   properties: [reviewProgressProp],
 })

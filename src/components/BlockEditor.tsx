@@ -10,7 +10,7 @@ import {
 import { useRef, useEffect, useLayoutEffect, useCallback, useMemo, useState, type Ref } from 'react'
 import { useInEditMode, useIsEditing, useUIStateBlock } from '@/data/globalState'
 import { debounce } from 'lodash-es'
-import { placeCursorAtX, placeCursorAtCoords } from '@/utils/codemirror.js'
+import { clampSelectionToLength, placeCursorAtX, placeCursorAtCoords } from '@/utils/codemirror.js'
 import { useContentRevision, usePropertyValue } from '@/hooks/block.js'
 import { shouldExitEditModeAfterBlur } from '@/utils/dom.js'
 import { EditorView } from '@codemirror/view'
@@ -143,23 +143,14 @@ export const BlockEditor = ({
     // would discard those characters. Skip; the user's next debounced
     // commit will catch the editor up.
     if (live !== lastCommittedContent.current) return
-    // Clamp the existing selection to the new doc length before dispatch.
-    // An external change can shorten the doc below the cursor; passing the
-    // raw selection then trips CodeMirror's "Selection points outside of
-    // document" check. Omitting selection isn't an option either — the
-    // cursor sits inside the replaced range [0, live.length], so default
-    // mapping collapses it to 0.
-    const newLength = incoming.length
-    const oldSelection = editorView.state.selection
-    const clampedSelection = EditorSelection.create(
-      oldSelection.ranges.map(r =>
-        EditorSelection.range(Math.min(r.anchor, newLength), Math.min(r.head, newLength)),
-      ),
-      oldSelection.mainIndex,
-    )
+    // Clamp the existing selection to the new doc length before dispatch —
+    // an external change can shorten the doc below the cursor (see
+    // clampSelectionToLength; omitting the selection instead would let
+    // default mapping collapse the cursor to 0, since it sits inside the
+    // replaced range [0, live.length]).
     editorView.dispatch({
       changes: {from: 0, to: live.length, insert: incoming},
-      selection: clampedSelection,
+      selection: clampSelectionToLength(editorView.state.selection, incoming.length),
     })
     // Cancel any pushChange pending from the user's pre-adoption typing,
     // and the one that the dispatch above just queued via onChange. The
@@ -198,18 +189,15 @@ export const BlockEditor = ({
         } else if (selection.x !== undefined) {
           placeCursorAtX(editorView, selection.x, selection.line === 'last')
         } else if (selection.start !== undefined) {
-          // Clamp to the live doc, mirroring the adoption-path clamp
-          // above: the stored selection is debounce-persisted and can
-          // outlive a doc-shrinking dispatch (e.g. the supertags `#`
-          // autocomplete deleting its trigger text), and CodeMirror
-          // throws "Selection points outside of document" on a raw
-          // out-of-range anchor.
-          const docLength = editorView.state.doc.length
-          const end = selection.end ?? selection.start
-          editorView.dispatch({selection: {
-            anchor: Math.min(selection.start, docLength),
-            head: Math.min(end, docLength),
-          }})
+          // The stored selection is debounce-persisted and can outlive
+          // a doc-shrinking dispatch (e.g. the supertags `#`
+          // autocomplete deleting its trigger text) — clamp it (see
+          // clampSelectionToLength, shared with the adoption path
+          // above).
+          editorView.dispatch({selection: clampSelectionToLength(
+            EditorSelection.single(selection.start, selection.end ?? selection.start),
+            editorView.state.doc.length,
+          )})
         }
       }
 

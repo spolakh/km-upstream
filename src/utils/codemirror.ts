@@ -4,6 +4,27 @@ import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { javascript } from '@codemirror/lang-javascript'
 import { insertNewline } from '@codemirror/commands'
 
+/** Clamp every range of a selection into `[0, docLength]`. For
+ *  dispatching a REMEMBERED selection against a doc that may have
+ *  shrunk since it was captured — a debounce-persisted selection
+ *  restored on focus, or a selection carried across an external
+ *  content adoption. CodeMirror throws "Selection points outside of
+ *  document" on a raw out-of-range anchor, and (for adoption) omitting
+ *  the selection instead would let default mapping collapse the cursor
+ *  to 0. */
+export const clampSelectionToLength = (
+  selection: EditorSelection,
+  docLength: number,
+): EditorSelection =>
+  EditorSelection.create(
+    selection.ranges.map(range =>
+      EditorSelection.range(
+        Math.min(range.anchor, docLength),
+        Math.min(range.head, docLength),
+      )),
+    selection.mainIndex,
+  )
+
 /** Produce the change/range spec for one selection range that either
  *  inserts an empty `open`/`close` pair at the cursor or wraps the
  *  selection with them, keeping the selection inside the wrappers.

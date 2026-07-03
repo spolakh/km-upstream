@@ -30,7 +30,7 @@ import type {
 import {
   blockTypeColorProp,
   blockTypeDescriptionProp,
-  blockTypeHideTagProp,
+  blockTypeHideFromBlockDisplayProp,
   blockTypeLabelProp,
   blockTypePropertiesProp,
 } from '@/data/properties'
@@ -72,7 +72,7 @@ const tryBuildType = (
   // with a CodecError, and letting that skip the row would drop the
   // type from every picker and re-offer "Create type" duplicates.
   // Degrade to the default instead.
-  const hideTag = safeDisplayProp(block, blockTypeHideTagProp, false)
+  const hideFromBlockDisplay = safeDisplayProp(block, blockTypeHideFromBlockDisplayProp, false)
   const color = safeDisplayProp(block, blockTypeColorProp, '').trim()
   const refIds = block.peekProperty(blockTypePropertiesProp) ?? []
   const properties: AnyPropertySchema[] = []
@@ -84,7 +84,7 @@ const tryBuildType = (
     id: block.id,
     label,
     ...(description ? {description} : {}),
-    ...(hideTag ? {hideTag} : {}),
+    ...(hideFromBlockDisplay ? {hideFromBlockDisplay} : {}),
     ...(color ? {color} : {}),
     properties,
   }
@@ -104,7 +104,7 @@ const contributionsEqual = (
     const ac = a[i]
     const bc = b[i]
     if (ac.id !== bc.id || ac.label !== bc.label || ac.description !== bc.description) return false
-    if (ac.hideTag !== bc.hideTag || ac.color !== bc.color) return false
+    if (ac.hideFromBlockDisplay !== bc.hideFromBlockDisplay || ac.color !== bc.color) return false
     const ap = ac.properties ?? []
     const bp = bc.properties ?? []
     if (ap.length !== bp.length) return false

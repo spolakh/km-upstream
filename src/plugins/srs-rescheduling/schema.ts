@@ -1,4 +1,4 @@
-import { ChangeScope, codecs, defineBlockType, defineProperty } from '@/data/api'
+import { ChangeScope, codecs, defineBlockType, defineProperty, INFRASTRUCTURE_TYPE_DISPLAY } from '@/data/api'
 // Sub-path import (not the barrel) — `schema.ts` is loaded from
 // `srsReschedulingDataExtension`, which is in the static-data graph.
 // Importing the barrel would force daily-notes/index.ts to evaluate
@@ -61,7 +61,7 @@ export const srsSnapshotHistoryProp = defineProperty<SrsReviewSnapshot[]>('snaps
 export const srsSm25Type = defineBlockType({
   id: SRS_SM25_TYPE,
   label: 'SRS SM-2.5',
-  structural: true,
+  ...INFRASTRUCTURE_TYPE_DISPLAY,
   properties: [
     srsIntervalProp,
     srsFactorProp,

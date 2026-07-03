@@ -216,7 +216,7 @@ export {
 } from '@/data/stateBlocks.js'
 // PropertySchema authoring — extensions define their own typed
 // properties via `defineProperty` from the data-layer api.
-export { defineBlockType, defineProperty, definePropertyEditorOverride, codecs, ChangeScope } from '@/data/api'
+export { defineBlockType, defineProperty, definePropertyEditorOverride, codecs, ChangeScope, INFRASTRUCTURE_TYPE_DISPLAY } from '@/data/api'
 export type {
   BlockData,
   Codec,

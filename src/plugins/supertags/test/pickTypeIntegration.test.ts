@@ -103,6 +103,9 @@ describe('supertags pick integration', () => {
     const [typeId] = getBlockTypes(data!)
     expect(typeId).toBeDefined()
     expect(env.repo.types.get(typeId)?.label).toBe('recipe')
+    // Creation stamps a persisted palette color (least-used pick) so
+    // fresh types don't hash-collide into look-alike chips.
+    expect(env.repo.types.get(typeId)?.color).toMatch(/^oklch\(/)
     expect(data!.content).toBe('dinner ')
   })
 

@@ -8,7 +8,7 @@ import { kernelValuePresetsExtension } from '@/components/propertyEditors/kernel
 import {
   blockTypeColorProp,
   blockTypeDescriptionProp,
-  blockTypeHideTagProp,
+  blockTypeHideFromBlockDisplayProp,
   blockTypeLabelProp,
   blockTypePropertiesProp,
 } from '@/data/properties'
@@ -78,7 +78,7 @@ const createBlockTypeBlock = async (
     label: string
     description?: string
     properties?: readonly string[]
-    hideTag?: boolean
+    hideFromBlockDisplay?: boolean
     color?: string
   },
 ): Promise<string> => {
@@ -92,8 +92,8 @@ const createBlockTypeBlock = async (
     if (args.properties !== undefined) {
       await tx.setProperty(id, blockTypePropertiesProp, args.properties)
     }
-    if (args.hideTag !== undefined) {
-      await tx.setProperty(id, blockTypeHideTagProp, args.hideTag)
+    if (args.hideFromBlockDisplay !== undefined) {
+      await tx.setProperty(id, blockTypeHideFromBlockDisplayProp, args.hideFromBlockDisplay)
     }
     if (args.color !== undefined) {
       await tx.setProperty(id, blockTypeColorProp, args.color)
@@ -118,28 +118,28 @@ describe('UserTypesService subscription', () => {
     env = await setup()
     const id = await createBlockTypeBlock(env.repo, {
       label: 'Recipe',
-      hideTag: true,
+      hideFromBlockDisplay: true,
       color: '#e11d48',
     })
     const contribution = env.repo.types.get(id)
-    expect(contribution).toMatchObject({hideTag: true, color: '#e11d48'})
+    expect(contribution).toMatchObject({hideFromBlockDisplay: true, color: '#e11d48'})
 
     // Display config is live-editable: a color change must survive the
     // contributionsEqual dedup and reach the registry.
     await env.repo.tx(async tx => {
       await tx.setProperty(id, blockTypeColorProp, 'tomato')
-      await tx.setProperty(id, blockTypeHideTagProp, false)
+      await tx.setProperty(id, blockTypeHideFromBlockDisplayProp, false)
     }, {scope: ChangeScope.BlockDefault})
     await vi.waitFor(() => {
       const updated = env.repo.types.get(id)
       expect(updated?.color).toBe('tomato')
-      expect(updated?.hideTag).toBeUndefined()
+      expect(updated?.hideFromBlockDisplay).toBeUndefined()
     }, {timeout: SUBSCRIPTION_TIMEOUT_MS})
   })
 
   it('a malformed display-config value degrades to defaults without unregistering the type', async () => {
     env = await setup()
-    const bad = await createBlockTypeBlock(env.repo, {label: 'Bad', hideTag: true})
+    const bad = await createBlockTypeBlock(env.repo, {label: 'Bad', hideFromBlockDisplay: true})
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     try {
       // Simulate a bridge/import writing a string into the boolean prop
@@ -148,13 +148,13 @@ describe('UserTypesService subscription', () => {
       await env.repo.tx(async tx => {
         const row = await tx.get(bad)
         await tx.update(bad, {
-          properties: {...row!.properties, [blockTypeHideTagProp.name]: 'true'},
+          properties: {...row!.properties, [blockTypeHideFromBlockDisplayProp.name]: 'true'},
         })
       }, {scope: ChangeScope.BlockDefault})
       await vi.waitFor(() => {
         const contribution = env.repo.types.get(bad)
         expect(contribution?.label).toBe('Bad')
-        expect(contribution?.hideTag).toBeUndefined()
+        expect(contribution?.hideFromBlockDisplay).toBeUndefined()
       }, {timeout: SUBSCRIPTION_TIMEOUT_MS})
     } finally {
       warn.mockRestore()
@@ -190,7 +190,7 @@ describe('UserTypesService subscription', () => {
     env = await setup()
     const id = await createBlockTypeBlock(env.repo, {label: 'Plain'})
     const contribution = env.repo.types.get(id)!
-    expect(contribution.hideTag).toBeUndefined()
+    expect(contribution.hideFromBlockDisplay).toBeUndefined()
     expect(contribution.color).toBeUndefined()
   })
 
