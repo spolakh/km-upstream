@@ -29,7 +29,7 @@ import type {
   CompletionSource,
 } from '@codemirror/autocomplete'
 import type { TypeContribution } from '@/data/api'
-import { isInsideMarkdownCode } from '@/editor/syntaxContext'
+import { isInsideLiteralMarkdown } from '@/editor/syntaxContext'
 import { matchCharTrigger, type TriggerMatch } from '@/editor/triggerMatch'
 
 /** Whether the `#` autocomplete offers this type — everything except
@@ -283,11 +283,11 @@ export const typeTagCompletionSource = (
     const line = state.doc.lineAt(pos)
     const match = matchHashTrigger(line.text, pos - line.from)
     if (!match) return null
-    // `#word` is exactly what code looks like (`#define`, `#include`,
-    // a CSS `#id`, `#!/bin/sh`) — and with the dropdown open, Enter
-    // accepts the auto-selected "Create type" sentinel: it deletes the
-    // code text and mints a junk type. Tags don't exist inside code.
-    if (isInsideMarkdownCode(state, pos)) return null
+    // `#word` is exactly what literal spans look like (`#define` in a
+    // fence, a CSS `#id` in backticks, `http://…/#anchor`) — and with
+    // the dropdown open, Enter accepts the auto-selected "Create type"
+    // sentinel: it deletes that text and mints a junk type.
+    if (isInsideLiteralMarkdown(state, pos)) return null
 
     const candidates = await options.getCandidates(match.query)
     if (candidates.length === 0 && !explicit) return null

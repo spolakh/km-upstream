@@ -72,9 +72,6 @@ export function TypesPropertyEditor({
   // since last typing — an index-based proxy can't tell "navigated
   // back to row 0" from "never navigated".
   const [navigated, setNavigated] = useState(false)
-  // Reactive registry read: a one-shot runtime.read would go stale if
-  // a memo boundary ever cut this editor off from the panel's own
-  // types-driven re-render.
   const typesRegistry = useTypes()
   const options = useMemo<TypeOption[]>(() => Array.from(typesRegistry.values()).map(type => ({
     id: type.id,
@@ -206,7 +203,7 @@ export function TypesPropertyEditor({
           aria-expanded={open}
           aria-controls={listboxId}
           aria-autocomplete="list"
-          aria-activedescendant={open && filtered.length > 0 ? listbox.activeDescendantId : undefined}
+          aria-activedescendant={open && !readOnly ? listbox.activeDescendantId : undefined}
           onFocus={() => setOpen(true)}
           onChange={event => {
             setQuery(event.target.value)

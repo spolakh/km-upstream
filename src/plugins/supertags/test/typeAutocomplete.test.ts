@@ -213,7 +213,8 @@ describe('typeTagCompletionSource', () => {
     expect(explicit).toMatchObject({options: []})
   })
 
-  it('never fires inside markdown code — fenced or inline — where #word IS the code', async () => {
+  it('never fires inside literal markdown — code (fenced/indented/inline) or URLs', async () => {
+    // Harm rationale lives at the gate call in typeTagCompletionSource.
     const source = typeTagCompletionSource({
       getCandidates: () => [candidate()],
       pickType: async () => {},
@@ -224,12 +225,18 @@ describe('typeTagCompletionSource', () => {
         pos,
         false,
       )
-    // Without the gate, Enter here accepts the auto-selected create
-    // sentinel: the code text is deleted and a junk type is minted.
     const fenced = '```\n#define FOO\n```'
     expect(await source(markdownContext(fenced, fenced.indexOf('FOO') - 1))).toBeNull()
+    // Indented code resolves through CodeBlock, not FencedCode — this
+    // case discriminates that entry of the node set.
+    const indented = '    #define FOO'
+    expect(await source(markdownContext(indented, indented.indexOf('FOO') - 1))).toBeNull()
     const inline = 'run `#deploy` now'
     expect(await source(markdownContext(inline, inline.indexOf('`', 5)))).toBeNull()
+    // A URL anchor is not a tag (the `/` before `#` passes the
+    // word-char guard, so only the tree check catches it).
+    const url = 'see http://example.com/#anc'
+    expect(await source(markdownContext(url, url.length))).toBeNull()
     // …and the gate must not over-block prose in the same language.
     const prose = 'note #rec'
     expect(await source(markdownContext(prose, prose.length))).not.toBeNull()

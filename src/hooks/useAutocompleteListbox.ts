@@ -101,7 +101,12 @@ export function useAutocompleteListbox({
   return {
     activeIndex,
     setActiveIndex,
-    activeDescendantId: listboxId ? `${listboxId}-option-${activeIndex}` : undefined,
+    // Guard against a stale index: `move` clamps, but the option list
+    // can shrink underneath the index (a concurrent registry change
+    // while hovering) — a dangling IDREF is worse for AT than none.
+    activeDescendantId: listboxId && activeIndex < itemCount
+      ? `${listboxId}-option-${activeIndex}`
+      : undefined,
     onKeyDown,
     getOptionProps,
   }
