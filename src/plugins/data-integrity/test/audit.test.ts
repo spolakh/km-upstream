@@ -23,7 +23,7 @@ import {
   runConsistencyAuditNow,
 } from '../schedule'
 import {
-  getConsistencyAuditSnapshot,
+  getConsistencyAuditSnapshotFor,
   resetConsistencyAuditStore,
 } from '../store'
 import {
@@ -66,7 +66,7 @@ describe('data-integrity audit runner + cadence (schedule.ts)', () => {
     expect(result.anomalies).toBe(0)
     expect(result.checks.references_index_mirror.status).toBe('ok')
     // Published to the store the diagnostics source reads.
-    expect(getConsistencyAuditSnapshot()).toBe(result)
+    expect(getConsistencyAuditSnapshotFor('ws-1')).toBe(result)
   })
 
   it('flags a mirror anomaly — an orphan block_references row (source block gone)', async () => {
@@ -107,14 +107,14 @@ describe('data-integrity audit runner + cadence (schedule.ts)', () => {
   it('the scheduling effect runs one audit on workspace open and publishes it', async () => {
     consistencyAuditEffect.start(ctx('ws-eff'))
     await settle()
-    expect(getConsistencyAuditSnapshot()?.workspaceId).toBe('ws-eff')
+    expect(getConsistencyAuditSnapshotFor('ws-eff')?.workspaceId).toBe('ws-eff')
   })
 
   it('the effect cleanup cancels a pending run before the idle job fires', async () => {
     const cleanup = consistencyAuditEffect.start(ctx('ws-eff2'))
     if (typeof cleanup === 'function') cleanup()
     await settle()
-    expect(getConsistencyAuditSnapshot()).toBeNull() // never ran
+    expect(getConsistencyAuditSnapshotFor('ws-eff2')).toBeNull() // never ran
   })
 
   it('the effect does not re-run a workspace already audited within the cadence window', async () => {
@@ -122,7 +122,7 @@ describe('data-integrity audit runner + cadence (schedule.ts)', () => {
     resetConsistencyAuditStore() // clear what the run published
     consistencyAuditEffect.start(ctx('ws-eff3')) // not due → schedules nothing
     await settle()
-    expect(getConsistencyAuditSnapshot()).toBeNull()
+    expect(getConsistencyAuditSnapshotFor('ws-eff3')).toBeNull()
   })
 })
 

@@ -6,7 +6,7 @@
  */
 
 import { dbForensics, type DbForensics } from '@/utils/dbForensics.js'
-import { isLocalDbCorruptionError } from '@/utils/localDbCorruption.js'
+import { isLocalDbCorruptionError, isRuntimeDbCorruptionError } from '@/utils/localDbCorruption.js'
 import { reportRuntimeLocalDbCorruption } from '@/data/localDbCorruptionSignal.js'
 
 // Structural PowerSync status surface (avoids importing PowerSync types; see
@@ -95,7 +95,10 @@ export const watchForRuntimeCorruption = (
 
   const check = (status: DownloadErrorStatus | undefined): void => {
     const err = downloadErrorOf(status)
-    if (err === undefined || err === null || !isLocalDbCorruptionError(err)) return
+    // Tight matcher: `downloadError` also carries benign HTTP/network failures
+    // whose server body could echo a broad corruption phrase — those must NOT
+    // route to the destructive recovery UI.
+    if (err === undefined || err === null || !isRuntimeDbCorruptionError(err)) return
     if (!runtimeCorruptionCaptured) {
       runtimeCorruptionCaptured = true
       void forensics.captureCorruptionSnapshot({

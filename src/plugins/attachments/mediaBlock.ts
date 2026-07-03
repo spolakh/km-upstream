@@ -69,6 +69,11 @@ export const MEDIA_TYPE_CONTRIBUTION: TypeContribution = defineBlockType({
 export const isImageMime = (mime: string | undefined): boolean =>
   typeof mime === 'string' && mime.toLowerCase().startsWith('image/')
 
+/** Does a MIME type render through the inline `<audio>` player (§11 audio branch)?
+ *  Case-insensitive, like {@link isImageMime}. */
+export const isAudioMime = (mime: string | undefined): boolean =>
+  typeof mime === 'string' && mime.toLowerCase().startsWith('audio/')
+
 /** The fallback MIME for a file with no declared type. */
 export const GENERIC_MIME = 'application/octet-stream'
 

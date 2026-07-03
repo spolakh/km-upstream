@@ -134,7 +134,7 @@ export function LocalDbCorruptionFallback({
               <Button
                 onClick={() => void handleExport()}
                 disabled={busy !== null}
-                className="flex-1"
+                className="flex-1 min-w-0"
               >
                 {busy === 'export' ? 'Downloading…' : 'Download backup (.db)'}
               </Button>
@@ -142,7 +142,7 @@ export function LocalDbCorruptionFallback({
                 variant="destructive"
                 onClick={() => setConfirming(true)}
                 disabled={busy !== null}
-                className="flex-1"
+                className="flex-1 min-w-0"
               >
                 {localOnly ? 'Reset (delete local data)…' : 'Reset & re-sync…'}
               </Button>
@@ -152,7 +152,7 @@ export function LocalDbCorruptionFallback({
                 variant="outline"
                 onClick={() => window.location.reload()}
                 disabled={busy !== null}
-                className="flex-1"
+                className="flex-1 min-w-0"
               >
                 Reload
               </Button>
@@ -160,7 +160,7 @@ export function LocalDbCorruptionFallback({
                 variant="outline"
                 onClick={() => void handleSignOut()}
                 disabled={busy !== null}
-                className="flex-1"
+                className="flex-1 min-w-0"
               >
                 Sign out
               </Button>
@@ -211,28 +211,31 @@ export function LocalDbCorruptionFallback({
                 I&apos;ve saved the backup file
               </Button>
             )}
+            {/* Download is the precondition step — full width on its own line so
+                the two long labels below don't overflow the card (the destructive
+                + Cancel pair share a row). */}
+            {!downloaded && (
+              <Button
+                variant="outline"
+                onClick={() => void handleExport()}
+                disabled={busy !== null}
+                className="w-full"
+              >
+                {busy === 'export'
+                  ? 'Downloading…'
+                  : backupFailed
+                    ? 'Try backup again'
+                    : downloadStarted
+                      ? 'Download again'
+                      : 'Download backup first'}
+              </Button>
+            )}
             <div className="flex flex-col gap-2 sm:flex-row">
-              {!downloaded && (
-                <Button
-                  variant="outline"
-                  onClick={() => void handleExport()}
-                  disabled={busy !== null}
-                  className="flex-1"
-                >
-                  {busy === 'export'
-                    ? 'Downloading…'
-                    : backupFailed
-                      ? 'Try backup again'
-                      : downloadStarted
-                        ? 'Download again'
-                        : 'Download backup first'}
-                </Button>
-              )}
               <Button
                 variant="destructive"
                 onClick={() => void handleReset()}
                 disabled={busy !== null || !resetUnlocked}
-                className="flex-1"
+                className="flex-1 min-w-0"
               >
                 {busy === 'reset' ? 'Resetting…' : 'Delete local data & reload'}
               </Button>
@@ -240,7 +243,7 @@ export function LocalDbCorruptionFallback({
                 variant="outline"
                 onClick={() => setConfirming(false)}
                 disabled={busy !== null}
-                className="flex-1"
+                className="flex-1 min-w-0"
               >
                 Cancel
               </Button>

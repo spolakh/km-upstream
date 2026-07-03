@@ -32,13 +32,43 @@ const CORRUPTION_SUBSTRINGS = [
   'sqlite call returned corrupt', // powersync_control surfacing SQLITE_CORRUPT at runtime
 ] as const
 
-const messageOf = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error)
+// A TIGHTER set for the RUNTIME sync-apply path (`isRuntimeDbCorruptionError`),
+// where `error` is PowerSync's `downloadError`. That field holds ANY sync-loop
+// exception — including `HTTP <status>: <raw server body>` — and crosses the
+// worker as a plain object, so the broad set above would let a benign server
+// error body that merely echoes generic English like "…not a database table…"
+// or "malformed … schema" (sync-rule validation) route the user into the
+// DESTRUCTIVE recovery UI. These two phrasings are what a real SQLite corruption
+// emits AND cannot plausibly appear in the sync API's (Postgres-backed) error
+// bodies. `disk image is malformed` is SQLite-only; `sqlite call returned
+// corrupt` is powersync_control's exact SQLITE_CORRUPT wrapper.
+const RUNTIME_CORRUPTION_SUBSTRINGS = [
+  'sqlite call returned corrupt',
+  'disk image is malformed',
+] as const
+
+const messageOf = (error: unknown): string => {
+  if (error instanceof Error) return error.message
+  // A worker/Comlink-serialized error arrives as a plain object; read its string
+  // `.message` so the recovery UI's detail shows the real text, not "[object Object]".
+  if (typeof error === 'object' && error !== null) {
+    const msg = (error as { message?: unknown }).message
+    if (typeof msg === 'string') return msg
+  }
+  return String(error)
+}
 
 // The SQLite corruption text doesn't always reach us on the top-level `.message`
 // — PowerSync/app layers can rethrow with a generic outer message and the real
 // error on `.cause` (e.g. `new Error('boot failed', { cause: sqliteError })`).
 // Concatenate the whole cause chain (bounded) so substring-matching sees it.
+//
+// A non-Error is handled too: an error that crosses a Web Worker / Comlink
+// boundary can arrive as a PLAIN OBJECT `{name, message, stack}` rather than a
+// real `Error` instance — PowerSync's runtime `downloadError` (thrown by the
+// wa-sqlite worker's `powersync_control`) is exactly this shape. Reading its
+// string `.message` (instead of `String(obj)` → "[object Object]") is what lets
+// the runtime-corruption routing match at all.
 const messageChainOf = (error: unknown, depth = 5): string => {
   if (depth <= 0 || error === null || error === undefined) return ''
   if (error instanceof Error) {
@@ -47,14 +77,35 @@ const messageChainOf = (error: unknown, depth = 5): string => {
       ? error.message
       : `${error.message}\n${messageChainOf(cause, depth - 1)}`
   }
+  if (typeof error === 'object') {
+    const obj = error as { message?: unknown; cause?: unknown }
+    if (typeof obj.message === 'string') {
+      return obj.cause === undefined
+        ? obj.message
+        : `${obj.message}\n${messageChainOf(obj.cause, depth - 1)}`
+    }
+  }
   return String(error)
 }
 
-/** True when `error` reads like an unrecoverable SQLite-corruption open failure. */
-export const isLocalDbCorruptionError = (error: unknown): boolean => {
+const includesAnySubstring = (error: unknown, substrings: readonly string[]): boolean => {
   const msg = messageChainOf(error).toLowerCase()
-  return CORRUPTION_SUBSTRINGS.some(s => msg.includes(s))
+  return substrings.some(s => msg.includes(s))
 }
+
+/** True when `error` reads like an unrecoverable SQLite-corruption open failure.
+ *  Use at the DB-OPEN boundary, where `error` is a real in-process Error (no
+ *  worker-boundary / server-body contamination). For the runtime `downloadError`
+ *  path use {@link isRuntimeDbCorruptionError}, which is narrower. */
+export const isLocalDbCorruptionError = (error: unknown): boolean =>
+  includesAnySubstring(error, CORRUPTION_SUBSTRINGS)
+
+/** True when a RUNTIME sync-apply `downloadError` is a genuine SQLite corruption
+ *  — tighter than {@link isLocalDbCorruptionError} so a server-controlled error
+ *  body can't route a healthy session into the destructive recovery UI (see
+ *  RUNTIME_CORRUPTION_SUBSTRINGS). */
+export const isRuntimeDbCorruptionError = (error: unknown): boolean =>
+  includesAnySubstring(error, RUNTIME_CORRUPTION_SUBSTRINGS)
 
 /**
  * Typed local-DB corruption error. Carries the `userId` so the recovery UI can

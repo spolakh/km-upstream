@@ -155,6 +155,22 @@ const resolveSourceParents = async (
  *  per-id `VALUES (?)` list on heavily-linked targets. */
 const SOURCE_IDS_CTE = `source_ids(id) AS (SELECT value FROM json_each(?))`
 
+/** Hydrate the member (source/backlink) rows by id. Grouping consumes the
+ *  members' *references* (via `block_references`) and their parent edges, but
+ *  never the members' own rows — `resolveBacklinkSourceIds` returns ids only.
+ *  Group-header actions (e.g. daily-notes "spread") gate visibility on each
+ *  member's content through the action's `isVisible` (`block.peek()`), so this
+ *  primes those rows into the cache. One JSON-array bind (same trick as
+ *  `SOURCE_IDS_CTE`) avoids the SQLite parameter ceiling on heavily-linked
+ *  targets. */
+export const SELECT_GROUPED_BACKLINK_MEMBER_ROWS_SQL = `
+  WITH ${SOURCE_IDS_CTE}
+  SELECT ${buildQualifiedBlockColumnsSql('b')}
+  FROM source_ids s
+  JOIN blocks b ON b.id = s.id
+  WHERE b.deleted = 0
+`
+
 /** Group context = (refs from source + each ancestor) UNION (root
  *  ancestor's own id). Roam-style: "what context is each backlink
  *  in?" — the page it lives on plus any tags/refs anywhere up the
@@ -342,6 +358,17 @@ export const groupedBacklinksForBlockQuery = defineQuery<
     // One JSON-array bind for the source-ids CTE (vs one per id).
     // Avoids the SQLite parameter ceiling on heavily-linked targets.
     const sourceIdsJson = JSON.stringify(sourceIds)
+
+    // Prime member rows (see SELECT_GROUPED_BACKLINK_MEMBER_ROWS_SQL).
+    // `declareRowDeps: false` keeps the ids-only projection's invalidation
+    // shape: a plain content edit to a member won't re-fire this collection
+    // handle (a date-ref add/remove still will — the sources already declare
+    // refs-of deps via `dependOnSourceContextNode`).
+    const memberRows = await ctx.db.getAll<BlockRow>(
+      SELECT_GROUPED_BACKLINK_MEMBER_ROWS_SQL,
+      [sourceIdsJson],
+    )
+    ctx.hydrateBlocks(asBlockRows(memberRows), {declareRowDeps: false})
 
     const candidateRows = await ctx.db.getAll<CandidateRow>(
       SELECT_GROUPED_BACKLINK_CANDIDATES_SQL,

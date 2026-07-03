@@ -316,12 +316,16 @@ export const getSyncIndicatorView = (input: SyncIndicatorInput): SyncIndicatorVi
   // (already error tone) and to active/transient states (spinning) so it neither
   // clobbers progress nor fires on a mid-sync transient. Details render in the
   // dropdown.
+  //
+  // The label is the SOURCE'S OWN label (`alert.label`, e.g. "Data integrity"),
+  // not a hardcoded string — the alert is generic (any error-severity diagnostic
+  // source can raise it), so the chip must name whichever source is reporting.
   if (alert && view.tone !== 'error' && !view.spinning) {
     return {
       ...view,
       tone: 'error',
       icon: 'alert',
-      label: 'Integrity issue',
+      label: alert.label,
       title: `${alert.label}: ${alert.summary} — see details. ${view.title}`,
     }
   }

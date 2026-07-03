@@ -312,35 +312,10 @@ const insufficientOpfsSpaceMessage = (
   )
 }
 
-export function downloadBlob(
-  blob: Blob,
-  filename: string,
-  cleanup?: () => void | Promise<void>,
-): void {
-  const url = URL.createObjectURL(blob)
-  try {
-    const a = document.createElement('a')
-    a.href = url
-    a.download = filename
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-  } finally {
-    // Revoke after the click microtask finishes so the browser has a
-    // chance to start the download.
-    setTimeout(() => URL.revokeObjectURL(url), 0)
-    if (cleanup) {
-      // Blob URLs do not expose download completion. This fallback path is
-      // only for browsers without showSaveFilePicker; keep the snapshot
-      // around long enough for a large download to start and finish.
-      setTimeout(() => {
-        void Promise.resolve(cleanup()).catch(error => {
-          console.warn('[export-db] failed to clean export snapshot:', error)
-        })
-      }, 60 * 60 * 1000)
-    }
-  }
-}
+// `downloadBlob` moved to a light standalone util (`./downloadBlob.js`) so callers
+// that only need the transient-anchor download (e.g. the media renderer) don't pull
+// in this module's fflate / repoProvider deps. Re-exported here for existing importers.
+export { downloadBlob } from './downloadBlob.js'
 
 // SQLite db files start with 16 bytes "SQLite format 3" + NUL. Built
 // from a byte array on purpose — embedding the literal NUL in a string

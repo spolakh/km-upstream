@@ -85,6 +85,17 @@ describe('watchForRuntimeCorruption', () => {
     expect(getLocalDbCorruptionSnapshot()).toBeNull()
   })
 
+  it('does NOT route a benign HTTP sync error whose plain-object body echoes a corruption phrase', () => {
+    // downloadError arrives as a plain object; a server 4xx body can contain
+    // "…not a database…" etc. That must not yank a healthy session to reset.
+    const forensics = stubForensics()
+    const httpErr = { name: 'Error', message: 'HTTP Bad Request: table "x" is not a database table', stack: 'x' }
+    const db = { currentStatus: { dataFlowStatus: { downloadError: httpErr } } }
+    watchForRuntimeCorruption(db, 'user-1', 'kmp-v6-user-1.db', forensics)
+    expect(forensics.captureCorruptionSnapshot).not.toHaveBeenCalled()
+    expect(getLocalDbCorruptionSnapshot()).toBeNull()
+  })
+
   it('re-arms for a new user after an in-page account switch (disposes the stale listener)', () => {
     const forensics = stubForensics()
     const a = makeWatchDb()

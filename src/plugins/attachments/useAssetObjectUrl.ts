@@ -26,15 +26,16 @@ import { useCallback, useEffect, useState } from 'react'
 import type { AssetFailReason, AssetResolver } from './resolver.js'
 
 /** Why an asset URL is unavailable: any resolver fail reason, OR the verified bytes
- *  decoded fine but the browser couldn't render them as an IMAGE (an untrusted
- *  `media:mime` over non-image bytes, or a corrupt-but-hash-matching file). The
- *  latter is a RENDER-level, terminal outcome reported by the renderer — it has no
- *  place in the resolver's {@link AssetFailReason}. */
-export type AssetUrlFailReason = AssetFailReason | 'image-undecodable'
+ *  decoded fine but the browser couldn't render them as the claimed MEDIA (an untrusted
+ *  `media:mime` over bytes of a different kind — non-image bytes typed `image/*`, or
+ *  non-audio bytes typed `audio/*` — or a corrupt-but-hash-matching file). The latter is
+ *  a RENDER-level, terminal outcome reported by the renderer (the `<img>`/`<audio>`
+ *  onError) — it has no place in the resolver's {@link AssetFailReason}. */
+export type AssetUrlFailReason = AssetFailReason | 'media-undecodable'
 
 /** Failures that may clear on their own (object arrives / network recovers /
  *  workspace unlocks / re-paste the WK), so a refocus/reconnect should retry.
- *  `image-undecodable` is deliberately ABSENT — the bytes won't become decodable
+ *  `media-undecodable` is deliberately ABSENT — the bytes won't become decodable
  *  without a block edit, so it's terminal. */
 const TRANSIENT_FAILURES: ReadonlySet<AssetUrlFailReason> = new Set([
   'fetch-failed',
@@ -56,16 +57,23 @@ export type AssetUrlState =
   | { readonly status: 'ready'; readonly url: string }
   | { readonly status: 'error'; readonly reason: AssetUrlFailReason }
 
-/** The renderer calls this when the verified bytes at `url` couldn't be DECODED as
- *  an image (the `<img>` onError) — the hook then frees the Blob and goes terminal. */
+/** The renderer calls this when the verified bytes at `url` couldn't be DECODED as the
+ *  claimed media (the `<img>`/`<audio>` onError) — the hook frees the Blob, revokes the
+ *  URL, and goes terminal. */
 export type ReportDecodeFailure = (url: string) => void
 
 export function useAssetObjectUrl(
   args: AssetUrlArgs,
   // The DEMAND lane — only ever `resolve` (the backlog `replicate` is the down-lane's).
   resolver: Pick<AssetResolver, 'resolve'>,
+  // `enabled: false` skips the eager resolve entirely (no fetch/decrypt, no object URL,
+  // no retry listeners) — for a viewer that fetches LAZILY on demand (the download
+  // fallback) rather than showing the bytes inline. The returned state stays `loading`
+  // and is simply ignored by such a viewer. Defaults to true (the inline/image path).
+  options: { readonly enabled?: boolean } = {},
 ): readonly [AssetUrlState, ReportDecodeFailure] {
   const { workspaceId, contentHash, mime } = args
+  const enabled = options.enabled ?? true
   // A settled result is tagged with the inputs it was resolved FOR. The derived
   // return (below) treats a result for STALE inputs as `loading`, so we never
   // have to setState('loading') synchronously inside the effect on a re-run.
@@ -75,6 +83,7 @@ export function useAssetObjectUrl(
   const [retryTick, setRetryTick] = useState(0)
 
   useEffect(() => {
+    if (!enabled) return // lazy viewer — the eager resolve/object-URL is skipped
     let cancelled = false
     let objectUrl: string | null = null
 
@@ -99,7 +108,7 @@ export function useAssetObjectUrl(
       cancelled = true
       if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
-  }, [resolver, workspaceId, contentHash, mime, key, retryTick])
+  }, [enabled, resolver, workspaceId, contentHash, mime, key, retryTick])
 
   const state: AssetUrlState = settled?.key === key ? settled.state : { status: 'loading' }
 
@@ -122,9 +131,9 @@ export function useAssetObjectUrl(
     }
   }, [retryable])
 
-  // Reported by the renderer when the <img> can't DECODE the verified bytes. Free
-  // the Blob NOW — it can be tens of MiB and would otherwise stay alive until the
-  // block unmounts (a page of bad/hostile image attachments would retain them all
+  // Reported by the renderer when the <img>/<audio> can't DECODE the verified bytes.
+  // Free the Blob NOW — it can be tens of MiB and would otherwise stay alive until the
+  // block unmounts (a page of bad/hostile media attachments would retain them all
   // while showing only placeholders). Revoke the dead URL and settle to a terminal
   // error; the effect cleanup revoking the same URL later is a harmless no-op. The
   // guard ignores a stale report (the URL already moved on).
@@ -132,7 +141,7 @@ export function useAssetObjectUrl(
     URL.revokeObjectURL(failedUrl)
     setSettled((prev) =>
       prev?.state.status === 'ready' && prev.state.url === failedUrl
-        ? { key: prev.key, state: { status: 'error', reason: 'image-undecodable' } }
+        ? { key: prev.key, state: { status: 'error', reason: 'media-undecodable' } }
         : prev,
     )
   }, [])

@@ -82,7 +82,7 @@
   now has per-workspace opt-in end-to-end encryption. 2026-06-21.</p>
 
 <aside class="doc-status" style="border:1px solid var(--line); border-left:3px solid var(--info); background:var(--info-soft); border-radius:0 6px 6px 0; padding:8px 14px; margin:12px 0 18px; font-size:0.9em;">
-<strong>Status:</strong> partially implemented — phases 1–6 have landed on branch
+<strong>Status:</strong> partially implemented — phases 1–6, plus the inline-audio increment (§15), have landed on branch
 <code>feat/media-attachments</code>. Phase 1 = the byte-crypto seam (§5/§5.1:
 the <code>encb:v1:</code> binary envelope, <code>encodeBytes</code>/<code>decodeBytes</code>, the
 read-side content-hash verify) in <code>src/sync/</code>. Phase 2 = the <code>attachments</code> bucket
@@ -95,10 +95,20 @@ unlock/create), the OPFS byte store (§8, <code>src/attachments/byteStore.ts</co
 asset resolver (§7.3, <code>src/attachments/resolver.ts</code>) — fetch → decode → <strong>hash-verify →
 store</strong>, fail-closed on every error, the read-side check now the sole byte-confidentiality control
 (returns verified bytes). Phase 4 = the <code>media</code> block type + property schemas and the
-<code>MediaBlockRenderer</code> (§11, <code>src/attachments/</code>) — the image branch resolves bytes
-in-thread, wraps them as an object URL, and renders through the existing lightbox; non-image MIMEs get a
-file chip; a fail-closed resolve shows a broken-asset placeholder, never an unverified source;
-<code>canRender</code> reads a <code>peek()</code> snapshot so it never throws above the block
+<code>MediaBlockRenderer</code> (§11, <code>src/attachments/</code>) — it dispatches a block's
+<code>media:mime</code> through a mime→viewer FACET (<code>mediaViewersFacet</code>) that plugins contribute a
+viewer to — one per mime family. An EAGER inline viewer (image; PDF later, <code>eager: true</code>)
+gets the bytes resolved once on mount into a verified object URL (fetch → verify → Blob → object URL, revoked
+on unmount) and a fail-closed resolve shows a broken-asset placeholder, never an unverified source. Audio
+(<code>audio/*</code>) is a LAZY-INLINE viewer: it renders a metadata play affordance, resolves nothing on
+mount, and arms that SAME object-URL path only on the first play (audio files can be large), then renders a
+native <code>&lt;audio controls&gt;</code> at the verified <code>blob:</code> url with a filename + octet-stream
+download affordance beside it — same fail-closed guarantee, deferred fetch. The remaining non-image fallback is
+a LAZY download button: it resolves nothing on mount and, on click, fetches the verified bytes and saves them
+via a transient, immediately-revoked <em>octet-stream</em> anchor — never a persistent navigable
+<code>blob:</code> URL typed with the attacker-influenceable <code>media:mime</code> (a same-origin XSS vector).
+Deferring the resolve (audio / download) isn't to save egress (the down-lane replicates every media block for
+offline regardless, §8) but to avoid holding a decrypted object-URL Blob in memory for media nobody opened. <code>canRender</code> reads a <code>peek()</code> snapshot so it never throws above the block
 ErrorBoundary. Phase 5 = capture + the up-lane (§9/§11): paste/drop mints the asset block,
 stages bytes in a durable IndexedDB queue (stage-before-tx / promote-after-commit), and a
 single-owner lane drain encodes-at-drain + uploads (with a 409 poison-verify and a promote-only
@@ -114,7 +124,7 @@ reconnect / a slow sweep. Durable origin storage (§8) is the boot-time origin-w
 deferred</strong> — until it lands, a never-promoted <code>staged</code> orphan and its OPFS bytes are
 retained (never reaped), and a <code>failed</code> upload record is recoverable only by re-paste (no §9
 recovery actor yet).
-Last verified against code 2026-06-26. Treat as current intent. The least-settled part is the byte-lane
+Last verified against code 2026-07-02. Treat as current intent. The least-settled part is the byte-lane
 lifecycle / failure-recovery machinery (§8–§9, §16): the happy path and the crypto / threat model are
 solid; the recovery edges are where the spec is still hardening.
 </aside>
@@ -173,9 +183,13 @@ produce an object URL, §7.3 / §8). A service-worker variant that would make
 <p><strong>In scope (v1):</strong> images, via paste / drop / file picker; inline render with a
   lightbox; offline-first local caching; cross-device sync; correctness under E2EE workspaces.</p>
 
-<p><strong>Designed-for but not built (vNext):</strong> non-image file types (the model is
-  type-dispatched, so a new mime is a new renderer branch, not a schema change); thumbnails /
-  transforms; resumable uploads for large media; public sharing.</p>
+<p><strong>Built on the image foundation (§11 / §15):</strong> arbitrary non-image files render a
+  download affordance through the same content-addressed resolve + a mime→viewer facet, and
+  <code>audio/*</code> renders an inline <code>&lt;audio&gt;</code> player — each a facet contribution, not a
+  schema change. A richer viewer (PDF preview, video) is the same shape.</p>
+
+<p><strong>Designed-for but not built (vNext):</strong> the remaining richer inline viewers for non-image
+  mimes (PDF preview / video); thumbnails / transforms; resumable uploads for large media; public sharing.</p>
 
 <p><strong>Explicitly out of scope:</strong> server-side media features for E2EE workspaces (OCR,
   thumbnails, transcode) — the server has no key; this is the existing E2EE tradeoff
@@ -1216,11 +1230,30 @@ hand-roll is now the platform's.)</div>
   facet wiring:</p>
 
 <ul>
-  <li><strong><code>MediaBlockRenderer</code></strong> via <code>blockRenderersFacet</code>, with
-    <code>canRender = ({block}) =&gt; block.hasType('media')</code> and a
-    <code>priority</code> above the default. Branches on <code>mime</code>: image → the existing
-    <code>MarkdownImage</code> lightbox fed the object URL the in-thread resolver produces (§7.3); later, PDF / audio / video / generic
-    file-chip.</li>
+  <li><strong><code>MediaBlockRenderer</code></strong> via <code>blockRenderersFacet</code>, with a
+    <code>canRender</code> that reads a throw-free <code>peek()</code> snapshot for the <code>media</code>
+    type and a <code>priority</code> above the default. It dispatches the block's <code>media:mime</code>
+    through a mime→viewer FACET (<code>mediaViewersFacet</code>) that plugins contribute a viewer to — one per
+    mime family — so the renderer never special-cases a mime; byte access is <em>per-viewer</em>. An EAGER
+    inline viewer (image via the <code>MarkdownImage</code> lightbox; PDF later, <code>eager: true</code>)
+    gets the bytes resolved once on mount into the verified object URL the in-thread resolver
+    produces (§7.3, revoked on unmount). <code>audio/*</code> is a <strong>LAZY-INLINE</strong> viewer
+    (<code>eager: false</code>): it renders a metadata play affordance, resolves nothing on mount, and arms
+    that SAME object-URL resolve only on the first play (audio files can be large) — via a one-way
+    <code>requestResolve</code> latch the renderer exposes — then renders a native
+    <code>&lt;audio controls&gt;</code> at the verified <code>blob:</code> url (typed the block's
+    <code>audio/*</code> mime, safe to render, revoked on unmount) with a filename + an octet-stream download
+    affordance beside it; bytes that hash-verify but aren't decodable audio fall to the same broken placeholder
+    via <code>onError</code>. The remaining non-image fallback is <strong>LAZY</strong> — a metadata-only
+    download button that resolves the verified bytes only on click and saves them through a transient,
+    immediately-revoked <em>octet-stream</em> anchor, <em>not</em> a persistent navigable <code>blob:</code>
+    URL typed with the attacker-controlled <code>media:mime</code> (that would be same-origin XSS on
+    open-in-new-tab, with no CSP backstop, and unreliable-<code>download</code> on iOS). Deferring the
+    mount-time resolve (audio / download) is <em>not</em> about egress — the down-lane already replicates every
+    media block (incl. non-image) to local disk for offline (§8) — but about not holding a decrypted
+    object-URL Blob in
+    memory for media nobody opened, and not un-throttled demand-fetching ahead of that budgeted lane. A
+    richer inline viewer registers as a new facet contribution — no renderer change.</li>
   <li><strong>No second image representation.</strong> An attachment is always a <code>media</code> block
     rendered through its <code>!((id))</code> embed (above) — there is <em>no</em> <code>![](asset-ref)</code>
     markdown form to special-case (that would side-step the block model for no gain). Plain <em>external</em>
@@ -1440,8 +1473,11 @@ vNext; the v1 commitment is only the reserved property + audience flag.
       per-<code>clientId</code> session — those were the rejected SW path (§7.1–§7.2 / §7.3). Destruction
       is the coarse platform clear (§7.2), so no per-store wipe purge.</td></tr>
 <tr><td>4 — block model + renderer</td>
-    <td><code>media</code> block type; <code>MediaBlockRenderer</code> (image branch) reusing the
-      lightbox (external <code>![](url)</code> images keep the existing <code>MarkdownImage</code>, §11).</td></tr>
+    <td><code>media</code> block type; <code>MediaBlockRenderer</code> dispatching over the
+      <code>mediaViewersFacet</code> registry: an EAGER image viewer contribution resolves the verified
+      object URL for the lightbox; the built-in fallback is a LAZY, metadata-only download button that
+      resolves on click and saves via a transient octet-stream anchor (filename/size from metadata). External
+      <code>![](url)</code> images keep the existing <code>MarkdownImage</code>, §11.</td></tr>
 <tr><td>5 — capture + up-lane</td>
     <td>paste / drop / file-pick arms (through <code>pasteDecisionVerb</code>); deterministic content-derived
       block id via <code>createOrRestoreTargetBlock</code> (dedup is automatic, §11); optimistic write to the durable byte
@@ -1452,8 +1488,17 @@ vNext; the v1 commitment is only the reserved property + audience flag.
       store); the shared demand + backlog priority lanes with in-flight coalescing (§8); the replication
       <em>budget</em> / active-workspace <em>scope</em> / <em>politeness</em> controls; and
       <code>navigator.storage.persist()</code> so the byte store isn't best-effort-evicted.</td></tr>
+<tr><td>7 — inline audio (increment)</td>
+    <td>the first richer inline viewer atop the §11 <code>mediaViewersFacet</code>: an
+      <code>audio/*</code> viewer that renders a native <code>&lt;audio controls&gt;</code> at the verified
+      object URL. <strong>Play-gated</strong> (<code>eager: false</code> + a one-way <code>requestResolve</code>
+      latch on the renderer): the metadata poster resolves nothing on mount and the (possibly large) bytes are
+      fetched / decrypted only on the first play — same fail-closed object-URL path as the image viewer
+      (<code>onError</code> → broken placeholder), plus a filename + octet-stream download affordance. No
+      renderer branch — a pure facet contribution.</td></tr>
 <tr><td>vNext</td>
-    <td>non-image mimes; thumbnails / transforms; resumable upload; the
+    <td>the remaining richer inline viewers for non-image mimes (PDF preview, video) atop the
+      §11 <code>mediaViewersFacet</code>; thumbnails / transforms; resumable upload; the
       <code>effective_share_ids</code> storage-RLS branch when subtree sharing ships; public-share
       (export / key-in-fragment).</td></tr>
 </table>

@@ -3,6 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { ChangeScope, type BlockReference } from '@/data/api'
 import { createTestDb, resetTestDb, type TestDb } from '@/data/test/createTestDb'
 import { Repo } from '@/data/repo'
+import type { BlockCache } from '@/data/blockCache'
 import { createTestRepo } from '@/data/test/createTestRepo'
 import { resolveFacetRuntimeSync, type AppExtension } from '@/facets/facet.js'
 import { kernelDataExtension } from '@/data/kernelDataExtension.js'
@@ -41,13 +42,14 @@ const backlinksQueryInvalidationExtension: AppExtension = [
 interface Harness {
   h: TestDb
   repo: Repo
+  cache: BlockCache
 }
 
 const setup = async (): Promise<Harness> => {
   // Shared DB opened once per file, reset between tests; fresh Repo per test.
   await resetTestDb(sharedDb.db)
   const h = sharedDb
-  const { repo } = createTestRepo({
+  const { repo, cache } = createTestRepo({
     db: h.db,
     user: {id: 'user-1'},
     extensions: [
@@ -55,7 +57,7 @@ const setup = async (): Promise<Harness> => {
       groupedBacklinksDataExtension,
     ],
   })
-  return {h, repo}
+  return {h, repo, cache}
 }
 
 let sharedDb: TestDb
@@ -195,6 +197,51 @@ describe('groupedBacklinksDataExtension query', () => {
 
     expect(out.groups.map(group => group.label)).toEqual(['Page'])
     expect(sorted(out.groups[0].sourceIds)).toEqual(['child-1', 'child-2'])
+  })
+
+  it('primes member (source) rows into the cache', async () => {
+    // Members are resolved as ids (core.typedBlockIds), so their own rows stay
+    // unhydrated until a lazy entry loads them. Group-header actions (e.g. the
+    // daily-notes "spread" button) gate visibility on each member's content via
+    // `block.peek()`, so the query primes those rows. Proven by evicting the
+    // members to a cold-cache state, then asserting the query re-hydrates them.
+    //
+    // The members are parented under `container` (not top-level): a root-level
+    // member would become a 'root' grouping candidate and get hydrated as a
+    // group block anyway, masking whether the prime ran. Nested members are
+    // neither group blocks nor ancestors, so ONLY the prime hydrates them.
+    await create({id: 'target', content: 'Target'})
+    await create({id: 'topic', content: 'Topic'})
+    await create({id: 'container', content: 'Container'})
+    await create({
+      id: 'src-1',
+      parentId: 'container',
+      content: 'do the thing [[target]] [[topic]]',
+      references: [{id: 'target', alias: 'target'}, {id: 'topic', alias: 'topic'}],
+    })
+    await create({
+      id: 'src-2',
+      parentId: 'container',
+      content: 'another one [[target]] [[topic]]',
+      references: [{id: 'target', alias: 'target'}, {id: 'topic', alias: 'topic'}],
+    })
+
+    // Evict the members to a cold-cache state (they were cached by `create`),
+    // mirroring a fresh render where only their ids are known. Same idiom as
+    // the sibling `core.childIds { hydrate }` prime test.
+    env.cache.deleteSnapshot('src-1')
+    env.cache.deleteSnapshot('src-2')
+    expect(env.cache.getSnapshot('src-1')).toBeUndefined()
+    expect(env.cache.getSnapshot('src-2')).toBeUndefined()
+
+    const out = await env.repo.query[GROUPED_BACKLINKS_FOR_BLOCK_QUERY]({
+      workspaceId: WS,
+      id: 'target',
+    }).load()
+    expect(out.total).toBe(2)
+
+    expect(env.cache.getSnapshot('src-1')?.content).toBe('do the thing [[target]] [[topic]]')
+    expect(env.cache.getSnapshot('src-2')?.content).toBe('another one [[target]] [[topic]]')
   })
 
   it('groups incoming property references by source field even for a singleton source', async () => {

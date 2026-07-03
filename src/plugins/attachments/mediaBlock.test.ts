@@ -3,6 +3,7 @@ import {
   GENERIC_MIME,
   MEDIA_TYPE,
   MEDIA_TYPE_CONTRIBUTION,
+  isAudioMime,
   isImageMime,
   mediaHashProp,
   resolveCaptureMime,
@@ -30,6 +31,27 @@ describe('isImageMime', () => {
   it('is case-insensitive (MIME types are, even if File.type is lowercased)', () => {
     expect(isImageMime('IMAGE/PNG')).toBe(true)
     expect(isImageMime('Image/Gif')).toBe(true)
+  })
+})
+
+describe('isAudioMime', () => {
+  it('is true only for audio/* MIME types', () => {
+    expect(isAudioMime('audio/mpeg')).toBe(true)
+    expect(isAudioMime('audio/ogg')).toBe(true)
+    expect(isAudioMime('audio/wav')).toBe(true)
+  })
+
+  it('is false for non-audio and malformed/absent types', () => {
+    expect(isAudioMime('image/png')).toBe(false)
+    expect(isAudioMime('video/mp4')).toBe(false) // sibling family, not audio
+    expect(isAudioMime('audio')).toBe(false) // no slash — not a real audio type
+    expect(isAudioMime('')).toBe(false)
+    expect(isAudioMime(undefined)).toBe(false)
+  })
+
+  it('is case-insensitive (MIME types are, even if File.type is lowercased)', () => {
+    expect(isAudioMime('AUDIO/MPEG')).toBe(true)
+    expect(isAudioMime('Audio/Ogg')).toBe(true)
   })
 })
 

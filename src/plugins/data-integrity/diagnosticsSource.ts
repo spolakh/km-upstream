@@ -7,8 +7,8 @@
 import type { Repo } from '@/data/repo'
 import type { ConsistencyAuditResult } from './audit.js'
 import {
-  RUN_DATA_INTEGRITY_AUDIT_ACTION_ID,
-  getConsistencyAuditSnapshot,
+  VIEW_DATA_INTEGRITY_AUDIT_ACTION_ID,
+  getConsistencyAuditSnapshotFor,
   subscribeConsistencyAudit,
 } from './store.js'
 import type {
@@ -66,14 +66,16 @@ export const mapAuditToSnapshot = (result: ConsistencyAuditResult): DiagnosticSn
     severity,
     summary,
     detail: detailParts.join(' · ') || undefined,
-    actionId: RUN_DATA_INTEGRITY_AUDIT_ACTION_ID,
+    // "Inspect" re-opens the LAST results (this same snapshot) without paying for
+    // another full audit; the dialog carries its own "Re-run" for a fresh scan.
+    actionId: VIEW_DATA_INTEGRITY_AUDIT_ACTION_ID,
   }
 }
 
-/** Build the diagnostic source. The audit store is a module global holding the
- *  LAST audited workspace's result, so gate on the active workspace: a result
- *  for another workspace reports nothing (rather than the wrong counts) until
- *  this workspace's audit publishes. Memoized so getSnapshot is ref-stable. */
+/** Build the diagnostic source. The audit store keeps results per workspace, so
+ *  read the ACTIVE workspace's result via `getConsistencyAuditSnapshotFor`: a
+ *  result for another workspace reports nothing (rather than the wrong counts)
+ *  until this workspace's audit publishes. Memoized so getSnapshot is ref-stable. */
 export const createDataIntegrityDiagnosticSource = (
   repo: Pick<Repo, 'activeWorkspaceId'>,
 ): DiagnosticSourceContribution => {
@@ -84,9 +86,9 @@ export const createDataIntegrityDiagnosticSource = (
     label: 'Data integrity',
     subscribe: subscribeConsistencyAudit,
     getSnapshot: () => {
-      const result = getConsistencyAuditSnapshot()
       const active = repo.activeWorkspaceId
-      if (!result || result.workspaceId !== active) {
+      const result = getConsistencyAuditSnapshotFor(active)
+      if (!result) {
         const key = `none:${active ?? ''}`
         if (key !== cachedKey) {
           cachedKey = key

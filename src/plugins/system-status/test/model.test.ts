@@ -226,7 +226,9 @@ describe('getSyncIndicatorView', () => {
       const view = getSyncIndicatorView({...baseInput, diagnosticAlert: alert})
       expect(view.tone).toBe('error')
       expect(view.icon).toBe('alert')
-      expect(view.label).toBe('Integrity issue')
+      // The chip names the reporting source generically (not a hardcoded
+      // "Integrity issue"), so a non-integrity source would name itself.
+      expect(view.label).toBe('Data integrity')
       expect(view.title).toContain('Data integrity: 2 issues found')
     })
 

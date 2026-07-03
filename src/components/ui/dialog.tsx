@@ -31,10 +31,16 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName
 const DialogContent = ({
   className,
   children,
+  hideOverlay = false,
   ...props
-}: React.ComponentProps<typeof DialogPrimitive.Content>) => (
+}: React.ComponentProps<typeof DialogPrimitive.Content> & {
+  /** Skip the dimming overlay so the dialog can float over a still-interactive
+   *  app (e.g. a non-modal dialog whose actions open content in a side panel the
+   *  user should keep seeing). Defaults to the standard modal overlay. */
+  hideOverlay?: boolean
+}) => (
   <DialogPortal>
-    <DialogOverlay />
+    {!hideOverlay && <DialogOverlay />}
     <DialogPrimitive.Content
       className={cn(
         "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg sm:rounded-lg",

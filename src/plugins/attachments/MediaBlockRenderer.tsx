@@ -1,108 +1,109 @@
 /**
  * The `media`-block renderer (design §11). Mirrors the video-player plugin's
  * wiring: a {@link BlockRenderer} that renders blocks carrying the `media` type
- * (gated on a loaded snapshot, see canRender) at a priority above the default,
- * branching on the block's `media:mime`.
+ * (gated on a loaded snapshot, see canRender) at a priority above the default.
  *
- * Image branch: resolve the bytes in-thread (§7.3), wrap them as an object URL
- * (useAssetObjectUrl), and feed the existing {@link MarkdownImage} lightbox. A
- * fail-closed resolve (the resolver discarded unverified bytes, §5.1) renders the
- * broken-asset placeholder — NEVER a raw/unverified source. Bytes that verify but
- * the browser can't DECODE as an image (an untrusted `media:mime` on non-image
- * bytes, or a corrupt-but-hash-matching image) fall to the SAME placeholder via the
- * <img> onError, not the browser's broken-image glyph. Non-image MIMEs get a file
- * chip for now (full file/PDF/AV rendering is vNext, §15) and do NOT resolve bytes —
- * only the image branch fetches/decrypts.
+ * It reads the block's metadata and dispatches to a viewer chosen from the
+ * {@link mediaViewersFacet} registry ({@link pickMediaViewer}). Byte access is
+ * per-viewer (§7.3):
+ *  - an EAGER viewer (image; inline PDF later) gets the bytes resolved once on mount
+ *    into a verified object URL ({@link useAssetObjectUrl}: fetch → decrypt/passthrough →
+ *    HASH-VERIFY → Blob of the block's `media:mime` → object URL, revoked on unmount). A
+ *    fail-closed resolve (§5.1) surfaces as `error` → the broken-asset placeholder, NEVER
+ *    a raw/unverified source.
+ *  - a LAZY-INLINE viewer (audio) renders from metadata and resolves NOTHING on mount; it
+ *    arms the SAME object-URL resolve via `requestResolve` on the first play intent, then
+ *    reads the resulting `state` exactly like an eager viewer (same fail-closed guarantee).
+ *  - the LAZY download fallback resolves NOTHING on mount either; it gets a `resolveBytes`
+ *    thunk and fetches the verified bytes only when the user clicks download.
+ * The mount-time resolve is gated on `viewer.eager || armed` (armed = a lazy-inline viewer
+ * called requestResolve). The down-lane already replicates every media block (incl.
+ * non-image) to local disk for offline (§8), so deferring the resolve isn't about saving
+ * egress — it avoids holding a decrypted object-URL Blob in memory for media nobody opened
+ * (a page of large audio files), and avoids un-throttled demand-fetching ahead of that
+ * budgeted background lane.
  */
 
-import { FileText, ImageOff, Loader2 } from 'lucide-react'
+import { useCallback, useState } from 'react'
 import { DefaultBlockRenderer } from '@/components/renderer/DefaultBlockRenderer.js'
 import { usePropertyValue, useWorkspaceId } from '@/hooks/block.js'
-import { MarkdownImage } from '@/markdown/MarkdownImage.js'
-import type { Block } from '@/data/block.js'
+import { useAppRuntime } from '@/extensions/runtimeContext.js'
 import type { BlockRenderer, BlockRendererProps } from '@/types.js'
 import { getAssetResolver } from './assetResolver.js'
-import { MEDIA_TYPE, isImageMime, mediaFilenameProp, mediaHashProp, mediaMimeProp } from './mediaBlock.js'
+import {
+  MEDIA_TYPE,
+  mediaFilenameProp,
+  mediaHashProp,
+  mediaMimeProp,
+  mediaSizeProp,
+} from './mediaBlock.js'
+import { pickMediaViewer } from './mediaViewers.js'
+import { mediaViewersFacet } from './mediaViewersFacet.js'
 import { useAssetObjectUrl } from './useAssetObjectUrl.js'
-
-const Placeholder = ({
-  testid,
-  label,
-  icon,
-  spin = false,
-}: {
-  testid: string
-  label: string
-  icon: React.ReactNode
-  spin?: boolean
-}) => (
-  <div
-    data-testid={testid}
-    role="img"
-    aria-label={label}
-    className="flex items-center gap-2 rounded border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground"
-  >
-    <span className={spin ? 'animate-spin' : undefined}>{icon}</span>
-    <span>{label}</span>
-  </div>
-)
-
-/** Image branch — the ONLY path that resolves/decrypts bytes (§7.3). Split into
- *  its own component so a non-image block never triggers a resolve or an object
- *  URL it wouldn't use. */
-const MediaImage = ({ block, hash, mime, filename }: {
-  block: Block
-  hash: string
-  mime: string
-  filename: string | undefined
-}) => {
-  // The asset block's OWN workspace (reactive) — bytes are workspace-scoped (§10),
-  // so a foreign-workspace embed must resolve against the block's workspace, not
-  // the UI's active one. '' (while loading / missing) fails closed (deferred).
-  const workspaceId = useWorkspaceId(block, '')
-  const [state, reportDecodeFailure] = useAssetObjectUrl({ workspaceId, contentHash: hash, mime }, getAssetResolver())
-
-  if (state.status === 'ready') {
-    return (
-      <MarkdownImage
-        src={state.url}
-        alt={filename || 'Attachment image'}
-        className="max-w-full rounded"
-        // Verified bytes the browser can't decode as an image: tell the hook, which
-        // REVOKES the object URL (frees the Blob — see useAssetObjectUrl) and settles
-        // to a terminal error, so we drop to the placeholder below — never the glyph.
-        onError={() => reportDecodeFailure(state.url)}
-      />
-    )
-  }
-  if (state.status === 'loading') {
-    return <Placeholder testid="media-loading" label="Loading image…" icon={<Loader2 className="h-4 w-4" />} spin />
-  }
-  // Fail-closed (deferred / hash-mismatch / decode / fetch / no-key / error) OR
-  // verified bytes the <img> couldn't decode (onError above): the broken-asset
-  // placeholder — never unverified bytes (§5.1) and never the browser's glyph.
-  return <Placeholder testid="media-broken" label="Image unavailable" icon={<ImageOff className="h-4 w-4" />} />
-}
 
 export const MediaContentRenderer = ({ block }: BlockRendererProps) => {
   const [hash] = usePropertyValue(block, mediaHashProp)
   const [mime] = usePropertyValue(block, mediaMimeProp)
   const [filename] = usePropertyValue(block, mediaFilenameProp)
+  const [size] = usePropertyValue(block, mediaSizeProp)
 
-  // Non-image: a file chip (full non-image rendering is vNext, §15). No resolve.
-  if (!isImageMime(mime)) {
-    return (
-      <div
-        data-testid="media-file"
-        className="flex items-center gap-2 rounded border border-border bg-muted/40 px-3 py-2 text-sm"
-      >
-        <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-        <span className="truncate">{filename || mime || 'Attachment'}</span>
-      </div>
-    )
+  // The asset block's OWN workspace (reactive) — bytes are workspace-scoped (§10),
+  // so a foreign-workspace embed must resolve against the block's workspace, not
+  // the UI's active one. '' (while loading / missing) fails closed (deferred).
+  const workspaceId = useWorkspaceId(block, '')
+  const resolver = getAssetResolver()
+  // The viewer registry is a facet — plugins contribute a viewer per mime family; the
+  // renderer never special-cases a mime (design §11).
+  const viewer = pickMediaViewer(useAppRuntime().read(mediaViewersFacet), mime)
+
+  // A LAZY-INLINE viewer (audio) arms the eager resolve on demand via requestResolve. The
+  // latch is owned HERE (single source of truth — it also gates the resolve hook, and the
+  // viewer reads it back via the `armed` prop) and is SCOPED TO THE CURRENT CONTENT: `armed`
+  // is CLEARED whenever the content key transitions (re-capture / synced edit / undo — all
+  // mutate the row in place WITHOUT remounting), so a replaced attachment returns to its
+  // play-gated poster instead of surprise-resolving/autoplaying the new bytes, and never
+  // eager-fetches behind an un-played poster after a mime flip. It re-arms ONLY on a fresh
+  // play gesture — crucially NOT a derived `armedFor === contentKey`, which would spuriously
+  // re-arm when the key RETURNS to a previously-armed value (undo a re-capture: A→B→A).
+  // `contentKey` mirrors the resolve hook's key so the latch and the resolve re-gate
+  // together. (setState-during-render is the React-blessed "reset on prop change" idiom.)
+  const contentKey = `${workspaceId} ${hash} ${mime}`
+  const [armed, setArmed] = useState(false)
+  const [armedFor, setArmedFor] = useState(contentKey)
+  if (armedFor !== contentKey) {
+    setArmedFor(contentKey)
+    if (armed) setArmed(false)
   }
+  const requestResolve = useCallback(() => setArmed(true), [])
 
-  return <MediaImage block={block} hash={hash} mime={mime} filename={filename} />
+  // Resolve on mount for an EAGER inline viewer (image); for a LAZY-INLINE viewer (audio)
+  // only once armed; never for the pure download fallback (it uses resolveBytes on click).
+  const [state, reportDecodeFailure] = useAssetObjectUrl(
+    { workspaceId, contentHash: hash, mime },
+    resolver,
+    { enabled: viewer.eager || armed },
+  )
+
+  // The lazy path: a bound "give me the VERIFIED bytes" thunk for the download affordance
+  // (file fallback + audio) — fail-closed like the eager path (resolve() discards unverified).
+  const resolveBytes = useCallback(
+    () => resolver.resolve({ workspaceId, contentHash: hash }),
+    [resolver, workspaceId, hash],
+  )
+
+  const { Component } = viewer
+  return (
+    <Component
+      state={state}
+      reportDecodeFailure={reportDecodeFailure}
+      resolveBytes={resolveBytes}
+      requestResolve={requestResolve}
+      armed={armed}
+      mime={mime}
+      filename={filename}
+      size={size}
+    />
+  )
 }
 
 export const MediaBlockRenderer: BlockRenderer = (props: BlockRendererProps) => (

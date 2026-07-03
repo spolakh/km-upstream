@@ -17,6 +17,8 @@ import { systemToggle } from '@/facets/togglable.js'
 import { diagnosticsFacet } from '@/plugins/diagnostics/facet.js'
 import { mobileKeyboardToolbarItemsFacet } from '@/plugins/mobile-keyboard-toolbar/facet.js'
 import { MediaBlockRenderer } from './MediaBlockRenderer.js'
+import { audioMediaViewer, imageMediaViewer } from './mediaViewers.js'
+import { mediaViewersFacet } from './mediaViewersFacet.js'
 import { MediaDownLaneReplicator } from './MediaDownLaneReplicator.js'
 import { MediaUploadReconciler } from './MediaUploadReconciler.js'
 import { captureMediaContribution, mediaPasteDecisionContribution } from './pasteCapture.js'
@@ -41,6 +43,10 @@ export const attachmentsPlugin: AppExtension = systemToggle({
   typesFacet.of(ASSETS_TYPE_CONTRIBUTION, { source: 'attachments' }),
   MEDIA_PROPERTY_SCHEMAS.map((schema) => propertySchemasFacet.of(schema, { source: 'attachments' })),
   blockRenderersFacet.of({ id: 'media', renderer: MediaBlockRenderer }, { source: 'attachments' }),
+  // The image + audio mime-family viewers. A PDF / video plugin registers its own viewer
+  // on this facet and the renderer dispatches to it — no renderer change.
+  mediaViewersFacet.of(imageMediaViewer, { source: 'attachments' }),
+  mediaViewersFacet.of(audioMediaViewer, { source: 'attachments' }),
   // The capture path: DECIDE a file paste is media (decorator) + ACT on it (the
   // captureMediaVerb impl). Both gated here, so disabling the plugin disables capture
   // (a file paste falls through to a text paste, and the verb is a no-op).
