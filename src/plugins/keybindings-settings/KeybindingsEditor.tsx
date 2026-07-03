@@ -25,10 +25,6 @@ import {actionContextsFacet} from '@/extensions/core.js'
 import {getActionsBeforeKeybindingOverrides} from '@/shortcuts/effectiveActions.js'
 import {applyKeybindingOverrides} from '@/shortcuts/applyKeybindingOverrides.js'
 import {findKeybindingConflicts} from '@/shortcuts/keybindingConflicts.js'
-import {
-  KEYBINDING_OVERRIDE_USER_SOURCE,
-  type KeybindingOverride,
-} from '@/shortcuts/keybindingOverrides.js'
 import type {
   ActionConfig,
   ActionContextConfig,
@@ -38,37 +34,13 @@ import {KeyCaptureInput} from './KeyCaptureInput.tsx'
 import {formatChord, normalizeChord} from './keyCapture.ts'
 import {
   overrideEntryKey,
-  type StoredKeybindingOverride,
   type StoredKeybindingOverrides,
 } from './config.ts'
-
-const toFacetEntries = (stored: StoredKeybindingOverrides): readonly KeybindingOverride[] =>
-  stored.map(entry => ({
-    actionId: entry.actionId,
-    context: entry.context,
-    binding: entry.binding,
-    source: KEYBINDING_OVERRIDE_USER_SOURCE,
-  }))
-
-const withReplaced = (
-  stored: StoredKeybindingOverrides,
-  next: StoredKeybindingOverride,
-): StoredKeybindingOverrides => {
-  const key = overrideEntryKey(next.context, next.actionId)
-  const filtered = stored.filter(
-    e => overrideEntryKey(e.context, e.actionId) !== key,
-  )
-  return [...filtered, next]
-}
-
-const withRemoved = (
-  stored: StoredKeybindingOverrides,
-  actionId: string,
-  context: ActionContextType,
-): StoredKeybindingOverrides => {
-  const key = overrideEntryKey(context, actionId)
-  return stored.filter(e => overrideEntryKey(e.context, e.actionId) !== key)
-}
+import {
+  toFacetOverrides,
+  withRemovedOverride,
+  withReplacedOverride,
+} from './overrideStore.ts'
 
 const chordOf = (action: ActionConfig): string | null => {
   const binding = action.defaultBinding
@@ -114,7 +86,7 @@ export const KeybindingsEditor = ({value, onChange}: PropertyEditorProps<StoredK
     return map
   }, [contextConfigs])
 
-  const facetEntries = useMemo(() => toFacetEntries(value), [value])
+  const facetEntries = useMemo(() => toFacetOverrides(value), [value])
   const previewActions = useMemo(
     () => applyKeybindingOverrides(baseActions, facetEntries),
     [baseActions, facetEntries],
@@ -181,7 +153,7 @@ export const KeybindingsEditor = ({value, onChange}: PropertyEditorProps<StoredK
     (chord: string) => {
       if (!capturing) return
       const normalized = normalizeChord(chord)
-      onChange(withReplaced(value, {
+      onChange(withReplacedOverride(value, {
         actionId: capturing.actionId,
         context: capturing.context,
         binding: {keys: normalized},
@@ -197,14 +169,14 @@ export const KeybindingsEditor = ({value, onChange}: PropertyEditorProps<StoredK
 
   const handleReset = useCallback(
     (actionId: string, context: ActionContextType) => {
-      onChange(withRemoved(value, actionId, context))
+      onChange(withRemovedOverride(value, actionId, context))
     },
     [onChange, value],
   )
 
   const handleDisable = useCallback(
     (actionId: string, context: ActionContextType) => {
-      onChange(withReplaced(value, {
+      onChange(withReplacedOverride(value, {
         actionId,
         context,
         binding: {unbound: true},

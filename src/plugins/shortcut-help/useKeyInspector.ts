@@ -74,6 +74,17 @@ export interface KeyInspector {
   readonly selectBinding: (binding: HelpBinding) => void
 }
 
+/** Rebind-capture mode. When supplied (non-null), the next chord the user
+ *  presses is NOT inspected — it's resolved to a tinykeys chord string and
+ *  handed to `onChord` (Escape → `onCancel`). Same swallow rules as
+ *  inspection, so the chord being captured can't fire the action it's about
+ *  to be bound to. Read through a ref so toggling capture doesn't
+ *  re-subscribe the window listeners mid-hold. */
+export interface CaptureMode {
+  readonly onChord: (chord: string) => void
+  readonly onCancel: () => void
+}
+
 /** The platform copy chord (⌘C / Ctrl+C), with no other modifiers. */
 const isCopyChord = (event: KeyboardEvent): boolean =>
   event.key.toLowerCase() === 'c' &&
@@ -94,8 +105,17 @@ export const useKeyInspector = (
   open: boolean,
   bindings: readonly HelpBinding[],
   onClose: () => void,
+  capture?: CaptureMode | null,
 ): KeyInspector => {
   const [state, setState] = useState<InspectorState>(EMPTY)
+  // Capture handlers are read synchronously inside the keydown listener;
+  // mirror into a ref (layout effect, not render, per react-hooks/refs) so
+  // entering/leaving capture mode doesn't tear down and re-add the window
+  // listeners — key events fire after commit, so the ref is current by then.
+  const captureRef = useRef<CaptureMode | null>(capture ?? null)
+  useLayoutEffect(() => {
+    captureRef.current = capture ?? null
+  }, [capture])
   // The keydown handler needs the CURRENT buffer synchronously (to decide
   // clear-vs-close on Escape and to extend the sequence), so mirror state
   // into a ref rather than smuggling side effects into setState updaters.
@@ -149,6 +169,30 @@ export const useKeyInspector = (
       // held from BEFORE opening out of the ledger, so their release still
       // propagates (see keyup below).
       if (!rawEvent.repeat) downWhileOpenRef.current.add(physicalKeyId(rawEvent))
+
+      // Rebind capture: the next resolved chord is bound, not inspected.
+      // Mirrors KeyCaptureInput — build the chord from the raw event (its
+      // own keyCode recovery handles Alt-transforms), Escape cancels,
+      // modifiers alone show the "⌘…" preview. No copy escape-hatch here:
+      // while recording, ⌘C is a bindable chord, not a copy.
+      const capturing = captureRef.current
+      if (capturing) {
+        rawEvent.preventDefault()
+        if (rawEvent.repeat) return
+        if (rawEvent.key === 'Escape') {
+          capturing.onCancel()
+          return
+        }
+        if (isModifierOnly(rawEvent)) {
+          const partial = modifierPreview(rawEvent)
+          setState(s => ({...s, partial}))
+          return
+        }
+        const chord = chordFromEvent(rawEvent)
+        if (chord) capturing.onChord(chord)
+        return
+      }
+
       // Copy with a live selection keeps its native default (and is not
       // treated as an inspected chord) so the handler source is copyable.
       if (isCopyChord(rawEvent) && hasTextSelection()) return

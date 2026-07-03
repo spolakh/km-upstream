@@ -211,4 +211,50 @@ describe('useKeyInspector', () => {
     expect(result.current.state.pressed).toEqual([])
     expect(event.defaultPrevented).toBe(false)
   })
+
+  describe('capture mode', () => {
+    it('resolves the next chord to onChord instead of inspecting it', () => {
+      const onChord = vi.fn()
+      const onCancel = vi.fn()
+      const {result} = renderHook(() =>
+        useKeyInspector(true, model.bindings, vi.fn(), {onChord, onCancel}),
+      )
+
+      let event!: KeyboardEvent
+      act(() => {
+        // jsdom has no Mac marker, so Ctrl is the $mod primary.
+        event = press({key: 'k', ctrlKey: true})
+      })
+      expect(onChord).toHaveBeenCalledWith('$mod+k')
+      // The chord is captured, not inspected — and swallowed so it can't
+      // fire the action it's about to be bound to.
+      expect(result.current.state.matches).toBeNull()
+      expect(event.defaultPrevented).toBe(true)
+    })
+
+    it('previews modifier-only holds without resolving a chord', () => {
+      const onChord = vi.fn()
+      const {result} = renderHook(() =>
+        useKeyInspector(true, model.bindings, vi.fn(), {onChord, onCancel: vi.fn()}),
+      )
+      act(() => {
+        press({key: 'Control', ctrlKey: true})
+      })
+      expect(onChord).not.toHaveBeenCalled()
+      expect(result.current.state.partial).not.toBeNull()
+    })
+
+    it('Escape cancels the capture instead of closing the overlay', () => {
+      const onCancel = vi.fn()
+      const onClose = vi.fn()
+      renderHook(() =>
+        useKeyInspector(true, model.bindings, onClose, {onChord: vi.fn(), onCancel}),
+      )
+      act(() => {
+        press({key: 'Escape'})
+      })
+      expect(onCancel).toHaveBeenCalledTimes(1)
+      expect(onClose).not.toHaveBeenCalled()
+    })
+  })
 })
