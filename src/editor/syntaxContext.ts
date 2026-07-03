@@ -14,8 +14,8 @@ import type { SyntaxNode } from '@lezer/common'
  *  code — FencedCode (```), CodeBlock (indented), InlineCode
  *  (backticks), CodeText (the content node of the block forms);
  *  URL — autolinks and link targets (`http://…/#anchor`, `[t](#anchor)`
- *  are anchors, not tags); raw HTML and comments (`<div>#foo`,
- *  `<!-- #todo`). */
+ *  are anchors, not tags); raw HTML, comments, and entities
+ *  (`<div>#foo`, `<!-- #todo`, `&#123;`). */
 const LITERAL_NODE_NAMES: ReadonlySet<string> = new Set([
   'FencedCode',
   'CodeBlock',
@@ -26,6 +26,7 @@ const LITERAL_NODE_NAMES: ReadonlySet<string> = new Set([
   'HTMLTag',
   'Comment',
   'CommentBlock',
+  'Entity',
 ])
 
 /** True when `pos` sits inside a literal markdown span (code, URL, raw

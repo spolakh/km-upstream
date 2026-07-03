@@ -112,12 +112,7 @@ describe('useAutocompleteListbox', () => {
   })
 
   it('drops the active-descendant id when the list shrinks below the active index', () => {
-    // `move` clamps, but the list can shrink underneath the index (a
-    // concurrent registry change while hovering) — the id must not
-    // dangle on a nonexistent option element.
-    const onCommit = vi.fn(() => true)
-    const setOpen = vi.fn()
-    const { hook } = setup({ itemCount: 4, onCommit, setOpen, listboxId: 'lb' })
+    const { hook, onCommit, setOpen } = setup({ itemCount: 4, listboxId: 'lb' })
     act(() => hook.result.current.setActiveIndex(3))
     expect(hook.result.current.activeDescendantId).toBe('lb-option-3')
     hook.rerender({ itemCount: 2, onCommit, setOpen, listboxId: 'lb' })
