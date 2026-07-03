@@ -2,9 +2,9 @@ import { useId, useMemo, useState, type KeyboardEvent } from 'react'
 import { Plus, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { type PropertyEditorProps } from '@/data/api'
-import { typesFacet } from '@/data/facets.js'
 import { Block } from '@/data/block'
-import { useAppRuntime } from '@/extensions/runtimeContext.js'
+import { useTypes } from '@/hooks/typeRegistry.js'
+import { useAutocompleteListbox } from '@/hooks/useAutocompleteListbox.js'
 import { FloatingListbox } from '@/components/ui/floating-listbox.js'
 
 export interface TypeOption {
@@ -60,7 +60,6 @@ export function TypesPropertyEditor({
   value,
   block,
 }: PropertyEditorProps<readonly string[]>) {
-  const runtime = useAppRuntime()
   const listboxId = useId()
   const [shellElement, setShellElement] = useState<HTMLDivElement | null>(null)
   const typedBlock = block instanceof Block ? block : null
@@ -69,12 +68,14 @@ export function TypesPropertyEditor({
   const selectedSet = useMemo(() => new Set(selected), [selected])
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
-  const [activeIndex, setActiveIndex] = useState(0)
   // True once the user explicitly highlighted a row (arrows / hover)
   // since last typing — an index-based proxy can't tell "navigated
   // back to row 0" from "never navigated".
   const [navigated, setNavigated] = useState(false)
-  const typesRegistry = runtime.read(typesFacet)
+  // Reactive registry read: a one-shot runtime.read would go stale if
+  // a memo boundary ever cut this editor off from the panel's own
+  // types-driven re-render.
+  const typesRegistry = useTypes()
   const options = useMemo<TypeOption[]>(() => Array.from(typesRegistry.values()).map(type => ({
     id: type.id,
     label: type.label ?? type.id,
@@ -106,9 +107,29 @@ export function TypesPropertyEditor({
     setTypes(selected.filter(selectedType => selectedType !== typeId))
   }
 
+  // Shared listbox core: arrow navigation, option mouse handlers, and
+  // the aria-activedescendant / option-id wiring (same as
+  // PropertyPicker / RefPropertyEditor). Enter/Tab are handled in the
+  // keydown below instead of delegated — their commit runs through
+  // resolveCommitTarget (exact-match policy), not plain
+  // commit-the-active-row, and an empty query must not commit at all.
+  const listbox = useAutocompleteListbox({
+    itemCount: filtered.length,
+    setOpen,
+    listboxId,
+    onCommit: index => {
+      const option = filtered[index]
+      if (!option) return false
+      addType(option.id)
+      return true
+    },
+  })
+
   const commitCurrentQuery = (): boolean => {
     const option = resolveCommitTarget({
-      options, filtered, queryText, navigated, activeIndex, selectedIds: selectedSet,
+      options, filtered, queryText, navigated,
+      activeIndex: listbox.activeIndex,
+      selectedIds: selectedSet,
     })
     if (!option) return false
     addType(option.id)
@@ -118,18 +139,9 @@ export function TypesPropertyEditor({
   const handleInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (readOnly) return
 
-    if (event.key === 'ArrowDown') {
-      event.preventDefault()
-      setOpen(true)
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       setNavigated(true)
-      setActiveIndex(index => Math.min(index + 1, Math.max(filtered.length - 1, 0)))
-      return
-    }
-
-    if (event.key === 'ArrowUp') {
-      event.preventDefault()
-      setNavigated(true)
-      setActiveIndex(index => Math.max(index - 1, 0))
+      listbox.onKeyDown(event)
       return
     }
 
@@ -194,10 +206,11 @@ export function TypesPropertyEditor({
           aria-expanded={open}
           aria-controls={listboxId}
           aria-autocomplete="list"
+          aria-activedescendant={open && filtered.length > 0 ? listbox.activeDescendantId : undefined}
           onFocus={() => setOpen(true)}
           onChange={event => {
             setQuery(event.target.value)
-            setActiveIndex(0)
+            listbox.setActiveIndex(0)
             setNavigated(false)
             setOpen(true)
           }}
@@ -212,22 +225,21 @@ export function TypesPropertyEditor({
         maxWidth={352}
         maxHeight={224}
       >
-        {filtered.length > 0 ? filtered.map((option, index) => (
+        {filtered.length > 0 ? filtered.map((option, index) => {
+          const optionProps = listbox.getOptionProps(index)
+          return (
           <button
             key={option.id}
             type="button"
-            role="option"
-            aria-selected={index === activeIndex}
+            {...optionProps}
             className={cn(
               'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left',
-              index === activeIndex ? 'bg-accent text-accent-foreground' : 'hover:bg-accent hover:text-accent-foreground',
+              index === listbox.activeIndex ? 'bg-accent text-accent-foreground' : 'hover:bg-accent hover:text-accent-foreground',
             )}
-            onMouseDown={event => event.preventDefault()}
             onMouseEnter={() => {
               setNavigated(true)
-              setActiveIndex(index)
+              optionProps.onMouseEnter()
             }}
-            onClick={() => addType(option.id)}
           >
             <Plus className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
             <span className="min-w-0 flex-1 truncate">{option.label}</span>
@@ -240,7 +252,8 @@ export function TypesPropertyEditor({
               <span className="min-w-0 max-w-[12rem] truncate text-xs text-muted-foreground">{option.id}</span>
             )}
           </button>
-        )) : (
+          )
+        }) : (
           <div className="px-2 py-1.5 text-muted-foreground">No matching types</div>
         )}
       </FloatingListbox>

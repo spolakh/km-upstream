@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { CompletionContext } from '@codemirror/autocomplete'
+import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { describe, expect, it, vi } from 'vitest'
@@ -210,6 +211,28 @@ describe('typeTagCompletionSource', () => {
     expect(await source(contextFor('#zzz', 4))).toBeNull()
     const explicit = await source(contextFor('#zzz', 4, true))
     expect(explicit).toMatchObject({options: []})
+  })
+
+  it('never fires inside markdown code — fenced or inline — where #word IS the code', async () => {
+    const source = typeTagCompletionSource({
+      getCandidates: () => [candidate()],
+      pickType: async () => {},
+    })
+    const markdownContext = (doc: string, pos: number): CompletionContext =>
+      new CompletionContext(
+        EditorState.create({doc, extensions: [markdown({base: markdownLanguage})]}),
+        pos,
+        false,
+      )
+    // Without the gate, Enter here accepts the auto-selected create
+    // sentinel: the code text is deleted and a junk type is minted.
+    const fenced = '```\n#define FOO\n```'
+    expect(await source(markdownContext(fenced, fenced.indexOf('FOO') - 1))).toBeNull()
+    const inline = 'run `#deploy` now'
+    expect(await source(markdownContext(inline, inline.indexOf('`', 5)))).toBeNull()
+    // …and the gate must not over-block prose in the same language.
+    const prose = 'note #rec'
+    expect(await source(markdownContext(prose, prose.length))).not.toBeNull()
   })
 
   it('on apply, deletes the trigger text and hands pickType the candidate + doc snapshots', async () => {

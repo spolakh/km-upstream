@@ -47,7 +47,9 @@ const TypeChips = ({block, typeIds, registry}: {
   // this panel; shift / alt / cmd follow the canonical modifier matrix.
   const openBlock = useBlockOpener()
   return (
-    <span className="flex min-w-0 flex-wrap items-center gap-1" aria-label="Block types">
+    // role="group": aria-label is ignored on a generic span, and the
+    // row needs an accessible name to announce as one unit.
+    <span role="group" className="flex min-w-0 flex-wrap items-center gap-1" aria-label="Block types">
       {typeIds.map(typeId => {
         const type = registry.get(typeId)
         // Unknown id (type not registered — other device's type not yet

@@ -61,8 +61,15 @@ describe('resolveCommitTarget', () => {
     expect(resolve({
       options: [TASK],
       filtered: [],
+      // queryText arrives pre-lowercased from the component; the id
+      // comparison folds the OPTION's side — mixed-case id exercises it.
       queryText: 'uuid-2',
     })).toBe(TASK)
+    expect(resolve({
+      options: [{...TASK, id: 'UUID-2'}],
+      filtered: [],
+      queryText: 'uuid-2',
+    })).toMatchObject({id: 'UUID-2'})
   })
 
   it('no exact match and nothing filtered → nothing to commit', () => {

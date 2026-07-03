@@ -200,8 +200,7 @@ export async function createTypeBlock(
   // + color. The least-used pick reads the LIVE registry (pre-tx), so
   // two devices creating concurrently can still collide — acceptable:
   // the color is persisted data, editable on the definition block.
-  // Cross-workspace creates skip the pick (see CreateTypeBlockArgs) —
-  // the registry only projects the active workspace's user types.
+  // Cross-workspace creates skip the pick (see CreateTypeBlockArgs.color).
   const color = args.color !== undefined
     ? args.color.trim()
     : args.workspaceId === repo.activeWorkspaceId

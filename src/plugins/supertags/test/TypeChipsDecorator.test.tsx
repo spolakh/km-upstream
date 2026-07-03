@@ -145,10 +145,7 @@ describe('TypeChipsDecorator', () => {
     env = await setup()
     await renderTaggedBlock(env.repo, ['task', 'plumbing', 'ghost-type'])
 
-    // One click on a plumbing chip's X could strip a load-bearing type
-    // (panel-stack, a prefs container) that the # dropdown can't put
-    // back — those chips are display-only; the property panel is the
-    // removal surface.
+    // Rationale lives at the `removable` gate in TypeChipsDecorator.
     expect(screen.getByText('#Plumbing')).toBeTruthy()
     expect(screen.queryByLabelText('Remove Plumbing type')).toBeNull()
     expect(screen.getByLabelText('Remove Task type')).toBeTruthy()

@@ -20,8 +20,9 @@ export const clampSelectionToLength = (
     selection.ranges.map(range =>
       EditorSelection.range(
         // Both bounds: persisted selections are synced data a bridge /
-        // import can corrupt, and a negative offset throws at dispatch
-        // just like an overlong one.
+        // import can corrupt. An overlong offset throws at dispatch; a
+        // negative one is silently ACCEPTED into state (checkSelection
+        // only rejects past-end), leaving a corrupt selection live.
         Math.max(0, Math.min(range.anchor, docLength)),
         Math.max(0, Math.min(range.head, docLength)),
       )),
