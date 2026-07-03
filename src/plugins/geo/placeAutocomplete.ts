@@ -30,6 +30,7 @@
 
 import { EditorSelection } from '@codemirror/state'
 import type { EditorView } from '@codemirror/view'
+import { isInsideLiteralMarkdown } from '@/editor/syntaxContext'
 import { matchCharTrigger, type TriggerMatch } from '@/editor/triggerMatch'
 import type {
   Completion,
@@ -212,6 +213,13 @@ export const placeCompletionSource = (
     // Don't open on every keystroke until the user has typed `@` — the
     // matcher already enforces that. We do show on an empty query
     // (matched immediately after `@`) so the sentinel surfaces.
+
+    // `@word` is also what literal spans look like (`@decorator` /
+    // `@media` in code, `user@host` in a URL) — and with the dropdown
+    // open, Enter accepts a place candidate and replaces that text.
+    // The pending-candidates path above stays ungated: it re-opens a
+    // dropdown the pick flow itself stashed.
+    if (isInsideLiteralMarkdown(state, pos)) return null
 
     const candidates = await options.getCandidates(match.query)
     if (candidates.length === 0 && !explicit) return null

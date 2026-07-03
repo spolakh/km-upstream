@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { defineBlockType } from '@/data/api'
 import { defaultTypeColor } from '@/data/typeColors'
-import { chipStyle } from '../chipStyle'
+import { chipStyle } from './chipStyle'
 
 afterEach(() => vi.unstubAllGlobals())
 

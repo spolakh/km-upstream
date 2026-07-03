@@ -1,4 +1,5 @@
-/** Pure color ladder for type-tag chips: configured color > hashed
+/** Pure color ladder for the shared TypeChip (supertags block chips
+ *  and the property panel's selected chips): configured color > hashed
  *  default > (unregistered) none. Kept out of the component so the
  *  ladder is testable without a DOM — jsdom's CSS parser rejects
  *  `color-mix`, so asserting on rendered inline styles can't cover it.

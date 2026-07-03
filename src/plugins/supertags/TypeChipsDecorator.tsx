@@ -17,8 +17,6 @@
  *  keeps identity stable across parent re-renders (same invariant as
  *  CharacterCountDecorator). */
 
-import { X } from 'lucide-react'
-import { cn } from '@/lib/utils'
 import type { TypeContribution } from '@/data/api'
 import type { Block } from '@/data/block.js'
 import { typesProp } from '@/data/properties'
@@ -26,12 +24,12 @@ import { useProperty, useWorkspaceId } from '@/hooks/block.js'
 import { useTypes } from '@/hooks/typeRegistry.js'
 import { useBlockOpener } from '@/utils/navigation'
 import { buildAppHash } from '@/utils/routing'
+import { TypeChip } from '@/components/typeChip/TypeChip'
 import {
   type BlockContentDecorator,
   type BlockContentDecoratorContribution,
 } from '@/extensions/blockInteraction.js'
 import type { BlockRenderer } from '@/types.js'
-import { chipStyle } from './chipStyle'
 import { visibleTagTypeIds } from './typeAutocomplete'
 
 const TypeChips = ({block, typeIds, registry}: {
@@ -52,12 +50,6 @@ const TypeChips = ({block, typeIds, registry}: {
     <span role="group" className="flex min-w-0 flex-wrap items-center gap-1" aria-label="Block types">
       {typeIds.map(typeId => {
         const type = registry.get(typeId)
-        // Unknown id (type not registered — other device's type not yet
-        // synced, plugin disabled, or a deleted definition block): keep
-        // the chip visible per the never-silently-disappear policy, but
-        // don't print a full uuid — shorten it and say what it is.
-        const label = type?.label ?? (typeId.length > 8 ? `${typeId.slice(0, 8)}…` : typeId)
-        const style = chipStyle(type)
         // Plumbing chips (panel, user, prefs containers — anything the
         // `#` dropdown refuses to offer) are informative but LOAD-
         // BEARING: one click on the X would strip e.g. `panel-stack`
@@ -72,62 +64,18 @@ const TypeChips = ({block, typeIds, registry}: {
         // block (their config lives in code), so their chips stay
         // plain text.
         const definitionId = repo.userTypes.getTypeBlockId(typeId)
-        const labelText = `#${label}`
         return (
-          <span
+          <TypeChip
             key={typeId}
-            className={cn(
-              'inline-flex max-w-full items-center gap-1 rounded px-1.5 py-0.5 text-xs',
-              style ? '' : 'bg-muted text-muted-foreground',
-            )}
-            style={style}
-            title={type ? type.description ?? typeId : `Unknown type ${typeId} (not registered)`}
-          >
-            {definitionId ? (
-              <a
-                href={buildAppHash(workspaceId, definitionId)}
-                className="truncate text-inherit no-underline hover:underline"
-                // An <a> is draggable by default; a press-drag on the
-                // chip should read as a missed click, not start a
-                // native link drag.
-                draggable={false}
-                onClick={event => openBlock(event, {blockId: definitionId, workspaceId})}
-              >
-                {labelText}
-              </a>
-            ) : (
-              <span className="truncate">{labelText}</span>
-            )}
-            {removable && (
-              <button
-                type="button"
-                className={cn(
-                  // Padding + negative margin: a larger hit area with
-                  // the chip's visual footprint unchanged. Capped at
-                  // p-1 so the reach doesn't cross the 4px gap into
-                  // the label's trailing characters — a missed tap
-                  // must fall through as edit intent, not remove the
-                  // type.
-                  'rounded-sm p-1 -m-1 hover:bg-background focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-                  style ? 'text-inherit opacity-70 hover:opacity-100' : 'text-muted-foreground hover:text-foreground',
-                )}
-                aria-label={`Remove ${label} type`}
-                onMouseDown={event => event.preventDefault()}
-                onClick={event => {
-                  // Removing a tag must not double as "activate the
-                  // block's editor". The actual guard is `button`
-                  // being in `interactiveContentSelector` (the content
-                  // surface's click-to-edit filter); stopPropagation
-                  // is defense-in-depth for any other bubbled-click
-                  // listener above the chip row.
-                  event.stopPropagation()
-                  void block.removeType(typeId)
-                }}
-              >
-                <X className="h-3 w-3" />
-              </button>
-            )}
-          </span>
+            typeId={typeId}
+            type={type}
+            withHash
+            link={definitionId ? {
+              href: buildAppHash(workspaceId, definitionId),
+              onClick: event => openBlock(event, {blockId: definitionId, workspaceId}),
+            } : undefined}
+            onRemove={removable ? () => { void block.removeType(typeId) } : undefined}
+          />
         )
       })}
     </span>

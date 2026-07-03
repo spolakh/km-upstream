@@ -1,11 +1,12 @@
 import { useId, useMemo, useState, type KeyboardEvent } from 'react'
-import { Plus, X } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { type PropertyEditorProps } from '@/data/api'
 import { Block } from '@/data/block'
 import { useTypes } from '@/hooks/typeRegistry.js'
 import { useAutocompleteListbox } from '@/hooks/useAutocompleteListbox.js'
 import { FloatingListbox } from '@/components/ui/floating-listbox.js'
+import { TypeChip } from '@/components/typeChip/TypeChip'
 
 export interface TypeOption {
   id: string
@@ -79,7 +80,6 @@ export function TypesPropertyEditor({
     description: type.description,
     hideFromCompletion: type.hideFromCompletion === true,
   })), [typesRegistry])
-  const optionsById = useMemo(() => new Map(options.map(option => [option.id, option])), [options])
   const queryText = query.trim().toLowerCase()
   const filtered = useMemo(() => options.filter(option => {
     if (selectedSet.has(option.id)) return false
@@ -169,30 +169,17 @@ export function TypesPropertyEditor({
         ref={setShellElement}
         className="flex min-h-7 min-w-0 flex-wrap items-center gap-1.5 rounded-md border border-transparent bg-transparent px-0 py-0.5 focus-within:border-input focus-within:px-1.5"
       >
-        {selected.map(typeId => {
-          const option = optionsById.get(typeId)
-          const label = option?.label ?? typeId
-          return (
-            <span
-              key={typeId}
-              className="inline-flex max-w-full items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-xs text-foreground"
-              title={option?.description ?? typeId}
-            >
-              <span className="truncate">{label}</span>
-              {!readOnly && (
-                <button
-                  type="button"
-                  className="rounded-sm text-muted-foreground hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                  aria-label={`Remove ${label} type`}
-                  onMouseDown={event => event.preventDefault()}
-                  onClick={() => removeType(typeId)}
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              )}
-            </span>
-          )
-        })}
+        {/* The panel is the full management surface: every chip keeps
+            its ✕ (including plumbing types the block row withholds it
+            from), and re-adding anything is one dropdown away. */}
+        {selected.map(typeId => (
+          <TypeChip
+            key={typeId}
+            typeId={typeId}
+            type={typesRegistry.get(typeId)}
+            onRemove={readOnly ? undefined : () => removeType(typeId)}
+          />
+        ))}
         <input
           className="h-6 min-w-[8rem] flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/55 disabled:cursor-not-allowed disabled:opacity-60"
           value={query}

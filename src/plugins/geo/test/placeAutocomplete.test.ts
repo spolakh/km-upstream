@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { CompletionContext } from '@codemirror/autocomplete'
+import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { describe, expect, it, vi } from 'vitest'
@@ -112,6 +113,28 @@ describe('placeCompletionSource', () => {
     })
     const result = await source(docContext('@', 1))
     expect(result!.options.map(o => o.label)).toEqual(['Local'])
+  })
+
+  it('never fires inside literal markdown (code), where @word is the code', async () => {
+    const source = placeCompletionSource({
+      getCandidates: async () => [
+        {id: 't', source: 'local', label: 'Local', insertText: 'Local'},
+      ],
+      resolvePlace: async () => null,
+    })
+    const markdownContext = (doc: string, pos: number): CompletionContext =>
+      new CompletionContext(
+        EditorState.create({doc, extensions: [markdown({base: markdownLanguage})]}),
+        pos,
+        false,
+      )
+    const fenced = '```\n@Injectable()\n```'
+    expect(await source(markdownContext(fenced, fenced.indexOf('()')))).toBeNull()
+    const inline = 'use `@media` here'
+    expect(await source(markdownContext(inline, inline.indexOf('`', 5)))).toBeNull()
+    // …but prose in the same language still fires.
+    const prose = 'met at @blue'
+    expect(await source(markdownContext(prose, prose.length))).not.toBeNull()
   })
 })
 
