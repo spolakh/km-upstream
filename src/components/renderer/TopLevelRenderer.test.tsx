@@ -13,6 +13,7 @@ import { ActiveContextsProvider } from '@/shortcuts/ActiveContexts'
 import { actionContextsFacet } from '@/extensions/core'
 import { defaultActionContextConfigs } from '@/shortcuts/defaultContexts'
 import { LayoutRootContext, type LayoutRootContextValue } from './layoutRootContext'
+import type { FakePanelLayoutProjectionInstance } from '@/utils/test/fakePanelLayoutProjection'
 
 const repoRef = vi.hoisted(() => ({
   current: undefined as Repo | undefined,
@@ -49,42 +50,18 @@ vi.mock('@/components/BlockComponent.tsx', () => ({
   ),
 }))
 
-// Same fake-projection approach as usePanelLayoutProjection.test.tsx: swap the
-// real PanelLayoutProjection for an instance-tracking double so this test can
+// Same fake-projection double as usePanelLayoutProjection.test.tsx /
+// LayoutSessionHost.test.tsx (fakePanelLayoutProjection.ts): swap the real
+// PanelLayoutProjection for an instance-tracking double so this test can
 // assert one gets constructed for the root block without touching PowerSync.
-const {instances, FakeProjection} = vi.hoisted(() => {
-  interface Options {
-    repo: unknown
-    workspaceId: string
-    layoutSessionBlock: unknown
-  }
-
-  class FakeProjection {
-    readonly options: Options
-
-    constructor(options: Options) {
-      this.options = options
-      instances.push(this)
-    }
-
-    subscribe(): () => void {
-      return () => {}
-    }
-
-    start(): Promise<void> {
-      return Promise.resolve()
-    }
-
-    dispose(): void {}
-  }
-
-  const instances: FakeProjection[] = []
-  return {instances, FakeProjection}
-})
-
-vi.mock('@/utils/panelLayoutProjection.js', () => ({
-  PanelLayoutProjection: FakeProjection,
+const {instances} = vi.hoisted(() => ({
+  instances: [] as FakePanelLayoutProjectionInstance[],
 }))
+
+vi.mock('@/utils/panelLayoutProjection.js', async () => {
+  const {createFakePanelLayoutProjectionClass} = await import('@/utils/test/fakePanelLayoutProjection')
+  return {PanelLayoutProjection: createFakePanelLayoutProjectionClass(instances)}
+})
 
 // Imported after the mocks above so it picks up the mocked collaborators.
 import { TopLevelRenderer } from './TopLevelRenderer'

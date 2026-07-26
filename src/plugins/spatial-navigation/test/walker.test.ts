@@ -14,6 +14,7 @@ import {
   stackSiblingPanel,
   verticalNeighbor,
 } from '@/plugins/spatial-navigation/walker.js'
+import { activeLayoutSessionElement } from '@/utils/layoutSessionDom.js'
 
 // Make `isElementProperlyVisible` produce sensible answers under jsdom:
 // real browser rects come from layout, but jsdom never lays out, so
@@ -94,6 +95,13 @@ const buildPanel = (spec: PanelSpec): HTMLElement => {
     el.appendChild(block)
   }
   return el
+}
+
+const makeColumn = (columnId: string, panel: HTMLElement): HTMLElement => {
+  const column = document.createElement('div')
+  column.setAttribute('data-layout-column-id', columnId)
+  column.appendChild(panel)
+  return column
 }
 
 const buildLayout = (spec: LayoutSpec): HTMLElement => {
@@ -268,6 +276,38 @@ describe('horizontal neighbor panel (j/l)', () => {
     ])
     expect(horizontalNeighborPanel(findInstance('p1:A'), 'right')).toBeNull()
     expect(horizontalNeighborPanel(findInstance('p1:A'), 'left')).toBeNull()
+  })
+})
+
+describe('horizontal neighbor panel — layout-session scoping (root param)', () => {
+  it('does not spill into a hidden warm session\'s columns at the active session\'s boundary', () => {
+    // Two warm layout sessions coexist in the DOM (LayoutSessionHost
+    // keep-alive, see layoutSessionDom.ts): the active session has 2
+    // columns, the hidden one has its own. An unscoped, document-wide
+    // orderedColumns query can't tell them apart — "the column after the
+    // active session's last" resolves to the hidden session's first column,
+    // which is exactly the bug moveHorizontal (actions.ts) hit.
+    const activeSession = document.createElement('div')
+    activeSession.setAttribute('data-layout-session-id', 'session-active')
+    activeSession.setAttribute('data-layout-session-active', '')
+    activeSession.appendChild(makeColumn('a-c1', buildPanel({panelId: 'a-p1', instances: [{blockId: 'A', instance: 'a-p1:A'}]})))
+    activeSession.appendChild(makeColumn('a-c2', buildPanel({panelId: 'a-p2', instances: [{blockId: 'B', instance: 'a-p2:B'}]})))
+    document.body.appendChild(activeSession)
+
+    const hiddenSession = document.createElement('div')
+    hiddenSession.setAttribute('data-layout-session-id', 'session-hidden')
+    hiddenSession.appendChild(makeColumn('h-c1', buildPanel({panelId: 'h-p1', instances: [{blockId: 'C', instance: 'h-p1:C'}]})))
+    document.body.appendChild(hiddenSession)
+
+    // Unscoped (document-wide, the default `root` param): wrongly resolves
+    // past the active session's edge into the hidden session's column.
+    expect(horizontalNeighborPanel(findInstance('a-p2:B'), 'right')?.dataset.panelId).toBe('h-p1')
+
+    // Scoped to the active session root (activeLayoutSessionElement() — what
+    // moveHorizontal now threads through): correctly bounded, null at the
+    // true edge instead of a false destination.
+    const root = activeLayoutSessionElement() ?? document
+    expect(horizontalNeighborPanel(findInstance('a-p2:B'), 'right', root)).toBeNull()
   })
 })
 

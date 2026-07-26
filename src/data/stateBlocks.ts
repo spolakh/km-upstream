@@ -341,6 +341,8 @@ export const getPluginPrefsBlock = memoize(
     instanceKey(repo, workspaceId, user.id, 'plugin-prefs', type.id),
 )
 
+const UI_STATE_PATH_PART = 'ui-state'
+
 /** Resolve the UI-state block scoped to the current panel context.
  *  In a panel context (`context.panelId`), returns the panel's own
  *  block — per-panel UI state lives directly on it. Outside a panel,
@@ -358,13 +360,59 @@ export const getUIStateBlock = memoize(
     }
 
     const userBlock = await getUserBlock(repo, workspaceId, user)
-    return ensureUiChild(repo, userBlock, 'ui-state')
+    return ensureUiChild(repo, userBlock, UI_STATE_PATH_PART)
   },
   (repo, workspaceId, user, context) =>
     instanceKey(repo, workspaceId, user.id, context.panelId ?? '__root__'),
 )
 
 const LAYOUT_SESSIONS_PATH_PART = 'layout-sessions'
+
+/** Deterministic id of the root ui-state block — same uuidv5 chain
+ *  `ensureUiChild(userBlock, UI_STATE_PATH_PART)` resolves to at runtime.
+ *  Pure intermediate so `layoutSessionsContainerBlockId` below reads one
+ *  step per path segment (user page -> ui-state -> layout-sessions) instead
+ *  of nesting both `stateChildBlockId` calls inline. */
+const uiStateBlockId = (workspaceId: string, userId: string): string =>
+  stateChildBlockId(userPageBlockId(workspaceId, userId), UI_STATE_PATH_PART)
+
+/** Deterministic id of the layout-sessions CONTAINER block — the parent
+ *  every per-device / per-perspective layout-session block lives under
+ *  (user page → ui-state → layout-sessions; `getLayoutSessionBlock`
+ *  materializes children of exactly this row). Pure derivation over the
+ *  same uuidv5 chain `ensureStateChild` uses, so it needs NO block loaded —
+ *  which is what lets a renderer's synchronous `canRender` recognize the
+ *  container (`LayoutSessionHost`). Memoized because canRender runs per
+ *  candidate resolution. */
+export const layoutSessionsContainerBlockId = memoize(
+  (workspaceId: string, userId: string): string =>
+    stateChildBlockId(uiStateBlockId(workspaceId, userId), LAYOUT_SESSIONS_PATH_PART),
+  (workspaceId, userId) => `${workspaceId}:${userId}`,
+)
+
+/** Deterministic id of the layout-session block for a session KEY — the
+ *  `repo.client.activeLayoutSessionId` domain (per-device base id /
+ *  perspective key), which is NOT itself a block id. Same pure-derivation
+ *  rationale as `layoutSessionsContainerBlockId` above: needs no block
+ *  loaded, so `LayoutSessionHost` can map its warm session keys to block
+ *  ids synchronously at render.
+ *
+ *  MUST return exactly the id `getLayoutSessionBlock(rootUiState, key)`
+ *  below materializes. Both compose the one formula
+ *  (`stateChildBlockId(parentId, namespace)` — `ensureStateChild` keys its
+ *  row the same way), so they cannot drift unless the container chain
+ *  itself changes; the mapping is pinned against the materializer in
+ *  `src/data/test/globalState.test.ts`. */
+export const layoutSessionBlockIdForKey = memoize(
+  (workspaceId: string, userId: string, sessionKey: string): string =>
+    stateChildBlockId(layoutSessionsContainerBlockId(workspaceId, userId), sessionKey),
+  (workspaceId, userId, sessionKey) => `${workspaceId}:${userId}:${sessionKey}`,
+)
+
+/** Materializes (and returns) the session block for `layoutSessionId` —
+ *  the session KEY, not a block id. For the ROOT ui-state block this
+ *  resolves to `layoutSessionBlockIdForKey(workspaceId, userId, key)`
+ *  (the pure derivation above) — keep the two in lockstep. */
 export const getLayoutSessionBlock = memoize(
   async (uiStateBlock: Block, layoutSessionId: string): Promise<Block> => {
     const layoutSessionsBlock = await ensureUiChild(uiStateBlock.repo, uiStateBlock, LAYOUT_SESSIONS_PATH_PART)

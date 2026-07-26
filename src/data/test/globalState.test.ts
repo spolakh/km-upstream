@@ -57,6 +57,8 @@ import {
   getUIStateBlock,
   getUserBlock,
   getUserPrefsBlock,
+  layoutSessionBlockIdForKey,
+  layoutSessionsContainerBlockId,
   resetBlockSelection,
 } from '@/data/stateBlocks'
 
@@ -430,6 +432,22 @@ describe('getLayoutSessionBlock', () => {
     expect(a.peek()?.parentId).toBe(b.peek()?.parentId)
     expect(a.peek()?.content).toBe('layout-session-a')
     expect(b.peek()?.content).toBe('layout-session-b')
+  })
+
+  it('materializes EXACTLY the block id the pure derivations predict (LayoutSessionHost mapping pin)', async () => {
+    // The keep-alive host never materializes: it derives each warm session's
+    // block id synchronously via layoutSessionBlockIdForKey and mounts that.
+    // This pins the derivation against the materializer — if either side's
+    // uuidv5 chain changes without the other, the host would render
+    // nonexistent blocks under the opt-in.
+    const uiState = await getUIStateBlock(env.repo, WS, USER, {})
+    const session = await getLayoutSessionBlock(uiState, 'layout-session-a')
+
+    expect(session.id).toBe(layoutSessionBlockIdForKey(WS, USER.id, 'layout-session-a'))
+    // …and the container half of the chain agrees too (canRender's id).
+    expect(session.peek()?.parentId).toBe(layoutSessionsContainerBlockId(WS, USER.id))
+    // The session KEY is not itself a block id — the domains genuinely differ.
+    expect(session.id).not.toBe('layout-session-a')
   })
 })
 

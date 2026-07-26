@@ -51,6 +51,8 @@
   visible in two panes stays two distinct keys.
 */
 
+import { activeLayoutSessionElement } from '@/utils/layoutSessionDom'
+
 const FLIP_MS = 180
 const SETTLE_TIMEOUT_MS = 400
 const ROW_SELECTOR = '.tm-block'
@@ -93,9 +95,16 @@ export const withRowSlide = async (
     return run()
   }
 
+  // Scope the row scan to the ACTIVE layout session: with warm hidden
+  // sessions mounted (LayoutSessionHost), their rows also match
+  // `.tm-block` document-wide, which would let a hidden session's row
+  // steal a snapshot slot or get displaced by mistake. Resolved once per
+  // gesture — pre and post scans must agree on the same root. Degrades to
+  // `document` (identical to before) when the host isn't mounted.
+  const root = activeLayoutSessionElement() ?? document
   const pre = new Map<string, number>()
   const duplicates = new Set<string>()
-  for (const el of document.querySelectorAll<HTMLElement>(ROW_SELECTOR)) {
+  for (const el of root.querySelectorAll<HTMLElement>(ROW_SELECTOR)) {
     if (!ownable(el)) continue
     const key = rowKey(el)
     if (!key) continue
@@ -144,7 +153,7 @@ export const withRowSlide = async (
   await settled
 
   const post = new Map<string, HTMLElement | null>()
-  for (const el of document.querySelectorAll<HTMLElement>(ROW_SELECTOR)) {
+  for (const el of root.querySelectorAll<HTMLElement>(ROW_SELECTOR)) {
     if (!ownable(el)) continue
     const key = rowKey(el)
     if (!key || duplicates.has(key)) continue

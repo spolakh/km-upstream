@@ -210,6 +210,35 @@ describe('applyCurrentLayoutUrl', () => {
     ])
   })
 
+  it('accepts a persp-bearing hash for the SAME workspace (clean-id compare, not the garbage token)', async () => {
+    // Pre-fix, `#ws-1;persp=lane/a` parsed to workspaceId `ws-1;persp=lane`,
+    // mismatching `ws-1` → kind 'ignored' → the URL never applied (and the
+    // App-level layoutWorkspaceChanged spuriously full-remounted).
+    const result = await applyUrl('#ws-1;persp=lane/a')
+    expect(result.kind).toBe('applied')
+    expect(panelBlockIds(await rows())).toEqual(['a'])
+  })
+
+  it('still ignores a hash whose CLEAN workspace id differs, persp or not', async () => {
+    expect((await applyUrl('#ws-2;persp=lane/a')).kind).toBe('ignored')
+    expect(panelBlockIds(await rows())).toEqual([])
+  })
+
+  it('preserves the ws-context when normalizing an empty-target hash against live rows', async () => {
+    await createPanelRows(['a'])
+    const replaces: string[] = []
+    const result = await applyUrl('#ws-1;persp=lane', hash => replaces.push(hash))
+    expect(result.kind).toBe('normalized')
+    expect(replaces).toEqual(['#ws-1;persp=lane/a'])
+  })
+
+  it('preserves the ws-context through inbound canonicalization (sublayout degrade)', async () => {
+    const replaces: string[] = []
+    const result = await applyUrl('#ws-1;persp=lane/(a/b)', hash => replaces.push(hash))
+    expect(result.kind).toBe('normalized')
+    expect(replaces).toEqual(['#ws-1;persp=lane/a,b'])
+  })
+
   it('repairs active panel when URL reconciliation deletes the active row', async () => {
     await applyUrl('#ws-1/a/b/c')
     const beforeByBlock = await rowIdsByBlock()
@@ -1216,6 +1245,24 @@ describe('PanelLayoutProjection', () => {
     projection.dispose()
   })
 
+  it('outbound pushes PRESERVE the current hash ws-context (persp lane attribution)', async () => {
+    // Ws-context has no row representation, so a hash rebuilt from rows must
+    // re-attach the current hash's entries — otherwise every row change would
+    // strip `;persp=` from the history entry being pushed and Back would lose
+    // its lane attribution.
+    await createPanelRows(['a'])
+    const {projection, pushes} = startProjection('#ws-1;persp=lane/a')
+    await projection.start()
+
+    const [row] = await rows()
+    await env.repo.tx(async tx => {
+      await tx.setProperty(row.id, topLevelBlockIdProp, 'b')
+    }, {scope: ChangeScope.UiState, description: 'navigate panel'})
+
+    await vi.waitFor(() => expect(pushes).toEqual(['#ws-1;persp=lane/b']))
+    projection.dispose()
+  })
+
   it('pushes a stack URL when nested panel rows change', async () => {
     await applyUrl('#ws-1/a/x,b')
     let currentHash = '#ws-1/a/x,b'
@@ -1581,6 +1628,79 @@ describe('PanelLayoutProjection', () => {
     expect(notified).toBe(1)
     unsubscribe()
     projection.dispose()
+  })
+
+  // usePanelLayoutProjection now calls applyCurrentUrl() once after start()
+  // (pushState fires neither hashchange nor popstate, so a projection
+  // constructed after boot — the session-host switch — would otherwise
+  // never see the current URL). These pin the two ends of that contract.
+  describe('post-start applyCurrentUrl (the hook contract)', () => {
+    it('boot path: re-applying the already-canonical hash is a COMPLETE no-op — zero row writes, zero history mutations, no notify', async () => {
+      // Stand-in for bootstrapWorkspace's own apply + canonicalization:
+      // after it, rows and hash agree (';active' included).
+      await applyUrl('#ws-1/a/b;active')
+      const rowsBefore = await layoutRows()
+
+      const {projection, pushes, replaces, hash} = startProjection('#ws-1/a/b;active')
+      let notified = 0
+      const unsubscribe = projection.subscribe(() => { notified += 1 })
+      await projection.start()
+
+      await projection.applyCurrentUrl()
+      // StrictMode runs the effect (and thus the apply) twice — the second
+      // pass must be equally silent.
+      await projection.applyCurrentUrl()
+
+      // BlockData carries updatedAt, so even a same-value property rewrite
+      // inside the reconcile would fail this deep equality.
+      expect(await layoutRows()).toEqual(rowsBefore)
+      expect(pushes).toEqual([])
+      expect(replaces).toEqual([])
+      expect(hash()).toBe('#ws-1/a/b;active')
+      expect(notified).toBe(0) // kind 'noop' — the hook's explicit initial sync stays the only one
+      unsubscribe()
+      projection.dispose()
+    })
+
+    it('switch path: a slot-less persp hash over persisted rows normalizes with ONE replace; the next row mutation pushes ONE entry', async () => {
+      // The session-host switch protocol: the caller pushed `#ws;persp=…`
+      // (slot-less) and flipped the active session; the incoming session has
+      // persisted rows. Without the post-start apply the rows never entered
+      // the hash and the first mutation pushed a spurious extra entry.
+      await createPanelRows(['a', 'b'])
+      const {projection, pushes, replaces} = startProjection('#ws-1;persp=lane')
+      await projection.start()
+
+      await projection.applyCurrentUrl()
+
+      expect(replaces).toEqual(['#ws-1;persp=lane/a/b']) // replace, not push
+      expect(pushes).toEqual([])
+
+      const rowA = (await rowIdsByBlock()).get('a')
+      if (!rowA) throw new Error('missing a row')
+      await navigatePanel(rowA, 'c')
+
+      await vi.waitFor(() => expect(pushes).toEqual(['#ws-1;persp=lane/c/b'])) // ONE entry, no double
+      expect(replaces).toEqual(['#ws-1;persp=lane/a/b']) // still just the one normalization
+      projection.dispose()
+    })
+
+    it('an apply still queued when dispose() runs is inert (rapid switch-away)', async () => {
+      // The apply is queued on a microtask; a same-tick dispose (session
+      // switched away again before the apply ran) must keep the dead
+      // projection from normalizing ITS rows over the next session's hash.
+      await createPanelRows(['a'])
+      const {projection, pushes, replaces, hash} = startProjection('#ws-1;persp=lane')
+      await projection.start()
+
+      const pending = projection.applyCurrentUrl()
+      projection.dispose()
+      await pending
+
+      expect(pushes).toEqual([])
+      expect(replaces).toEqual([])
+      expect(hash()).toBe('#ws-1;persp=lane')
+    })
   })
 })
 

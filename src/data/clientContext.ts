@@ -17,10 +17,12 @@
  * object and keeps thin delegation shims for its existing public API,
  * but stops accreting indexical fields itself.
  *
- * This class holds bare state only — no Repo reference, no propagation.
- * Side-effectful transitions (facet-bridge notification, projector
- * re-pin, seed-materialization rescheduling on a workspace switch) live
- * in Repo's setters, which delegate just the field read/write here.
+ * This class holds bare state plus a change-notification channel (a
+ * CallbackSet per observable field) — no Repo reference. Side-effectful
+ * transitions (facet-bridge notification, projector re-pin,
+ * seed-materialization rescheduling on a workspace switch) live in
+ * Repo's setters, which delegate just the field read/write here;
+ * notifying subscribers is state bookkeeping, not a Repo side effect.
  *
  * `repo.client` and `useClientContext()` expose only the
  * {@link ClientContextReader} view (no set methods) — see its doc for
@@ -34,8 +36,8 @@
  */
 
 import { getLayoutSessionId } from '@/utils/layoutSessionId'
-import type { User } from '@/data/api/user.js'
 import { CallbackSet } from '@/utils/callbackSet'
+import type { User } from '@/data/api/user.js'
 
 export interface ClientContextOptions {
   user: User
@@ -130,7 +132,9 @@ export class ClientContext implements ClientContextReader {
    *  transition to run, only the {@link onActingAsChange} notify below,
    *  fired on an EFFECTIVE change (comparing the resolved getter value, so
    *  a set that folds to the same base id — `null` ⇄ the current base id —
-   *  is a no-op and does not notify). */
+   *  is a no-op and does not notify). The one reactive consumer today is
+   *  `LayoutSessionHost`, via the `useActiveLayoutSessionId` hook
+   *  (src/hooks) — thin sugar over this same channel, not a second one. */
   setActiveLayoutSessionId(id: string | null): void {
     const previous = this.activeLayoutSessionId
     this._activeLayoutSessionId = id

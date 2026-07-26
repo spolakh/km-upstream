@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { StrictMode } from 'react'
 import { cleanup, render } from '@testing-library/react'
 import type { Block } from '@/data/block'
+import type { FakePanelLayoutProjectionInstance } from '@/utils/test/fakePanelLayoutProjection'
 
 interface FakeProjectionOptions {
   repo: unknown
@@ -10,52 +11,18 @@ interface FakeProjectionOptions {
   layoutSessionBlock: Block
 }
 
-const {instances, callOrder, FakeProjection} = vi.hoisted(() => {
-  interface Options {
-    repo: unknown
-    workspaceId: string
-    layoutSessionBlock: unknown
-  }
-
-  class FakeProjection {
-    readonly options: Options
-    readonly subscribers: Array<() => void> = []
-    started = false
-    disposed = false
-    unsubscribed = false
-
-    constructor(options: Options) {
-      this.options = options
-      instances.push(this)
-    }
-
-    subscribe(cb: () => void): () => void {
-      // Shared (not per-instance) so the assertion pins the ACTUAL call
-      // order the hook issues them in, not just each method's own timing.
-      callOrder.push('subscribe')
-      this.subscribers.push(cb)
-      return () => { this.unsubscribed = true }
-    }
-
-    start(): Promise<void> {
-      callOrder.push('start')
-      this.started = true
-      return Promise.resolve()
-    }
-
-    dispose(): void {
-      this.disposed = true
-    }
-  }
-
-  const instances: FakeProjection[] = []
-  const callOrder: string[] = []
-  return {instances, callOrder, FakeProjection}
-})
-
-vi.mock('@/utils/panelLayoutProjection.js', () => ({
-  PanelLayoutProjection: FakeProjection,
+// Self-contained (no imports referenced) — see fakePanelLayoutProjection.ts's
+// call-site doc comment for why the class itself is wired up separately,
+// through a dynamic import in the vi.mock factory below.
+const {instances, callOrder} = vi.hoisted(() => ({
+  instances: [] as FakePanelLayoutProjectionInstance[],
+  callOrder: [] as string[],
 }))
+
+vi.mock('@/utils/panelLayoutProjection.js', async () => {
+  const {createFakePanelLayoutProjectionClass} = await import('@/utils/test/fakePanelLayoutProjection')
+  return {PanelLayoutProjection: createFakePanelLayoutProjectionClass(instances, callOrder)}
+})
 
 import { usePanelLayoutProjection } from '@/hooks/usePanelLayoutProjection.js'
 import { LayoutRootContext, type LayoutRootContextValue } from '@/components/renderer/layoutRootContext.js'
@@ -123,9 +90,13 @@ describe('usePanelLayoutProjection', () => {
     // subscribe() MUST precede start(): start() can resolve as early as the
     // same microtask, and any change it observes before a listener is
     // attached is lost — so subscribing after starting would silently drop
-    // the earliest projection notifications.
-    expect(callOrder).toEqual(['subscribe', 'start'])
-    // start() resolving fires the initial hash sync.
+    // the earliest projection notifications. applyCurrentUrl() follows
+    // start(): pushState fires no hash event, so the just-started projection
+    // reconciles the current URL exactly once, explicitly (a no-op on the
+    // boot path — pinned in panelLayoutProjection.test.ts).
+    await vi.waitFor(() => expect(callOrder).toEqual(['subscribe', 'start', 'applyCurrentUrl']))
+    expect(projection.applyCurrentUrlCalls).toBe(1)
+    // the initial hash sync fires AFTER the URL reconcile resolved.
     await vi.waitFor(() => expect(onLayoutHashChanged).toHaveBeenCalledTimes(1))
 
     // Projection change notifications flow to the same callback.
@@ -152,9 +123,13 @@ describe('usePanelLayoutProjection', () => {
     expect(second.disposed).toBe(false)
 
     // The torn-down first instance's late start() resolution must NOT fire
-    // the callback — only the live one syncs the hash.
+    // the callback — only the live one syncs the hash. It must not apply
+    // the URL either (a dead projection reconciling rows would race the
+    // live one).
     await vi.waitFor(() => expect(onLayoutHashChanged).toHaveBeenCalled())
     expect(onLayoutHashChanged).toHaveBeenCalledTimes(1)
+    expect(first.applyCurrentUrlCalls).toBe(0)
+    expect(second.applyCurrentUrlCalls).toBe(1)
 
     view.unmount()
     expect(second.disposed).toBe(true)

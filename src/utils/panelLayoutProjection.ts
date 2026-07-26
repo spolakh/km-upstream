@@ -939,7 +939,11 @@ export const applyCurrentLayoutUrl = async ({
 
   if (targetSlots.length === 0) {
     if (currentSlots.length > 0) {
-      replaceHash?.(preserveHashQueryParams(buildLayoutFromSlots(workspaceId, currentSlots), hash))
+      // Ws-context (e.g. `;persp=`) has no row representation — like slot
+      // `rest`, it lives in the URL only, so every rebuilt hash re-attaches
+      // the incoming route's entries or a normalization would eat them.
+      replaceHash?.(preserveHashQueryParams(
+        buildLayoutFromSlots(workspaceId, currentSlots, route.wsContext), hash))
       return {kind: 'normalized'}
     }
     return {kind: 'empty'}
@@ -949,14 +953,14 @@ export const applyCurrentLayoutUrl = async ({
 
   // Canonicalize the URL against what the rows actually hold (adds `;active`,
   // canonical entry order, un-parenthesizes degraded sublayouts) in ONE
-  // replace. `rest` entries the hash carried are re-attached (rows can't
-  // store them). Cannot loop: replaceState fires no event, and a second
-  // pass over the replaced hash compares equal.
+  // replace. `rest` entries and the ws-context the hash carried are
+  // re-attached (rows can't store either). Cannot loop: replaceState fires
+  // no event, and a second pass over the replaced hash compares equal.
   const finalRows = changed
     ? await layoutSessionBlock.repo.query.subtree({id: layoutSessionBlock.id, hidePropertyChildren: true}).load()
     : currentRows
   const finalSlots = layoutSlotsFromRows(layoutSessionBlock.id, finalRows)
-  const canonical = buildLayoutFromSlots(workspaceId, withRestFromUrl(route.slots, finalSlots))
+  const canonical = buildLayoutFromSlots(workspaceId, withRestFromUrl(route.slots, finalSlots), route.wsContext)
   if (canonical !== `#${splitHashRouteAndParams(hash).route}`) {
     replaceHash?.(preserveHashQueryParams(canonical, hash))
     return {kind: 'normalized'}
@@ -1006,6 +1010,13 @@ export class PanelLayoutProjection {
   private pendingInbound = 0
   private outboundSuppressed = false
   private outboundGeneration = 0
+  /** Terminal: set by dispose(), never cleared (projections are one-shot
+   *  per effect — nothing restarts a disposed one). Guards the QUEUED work
+   *  `applyCurrentUrl` schedules: dispose() can't cancel an in-flight apply,
+   *  and with the hook now applying post-start (see usePanelLayoutProjection)
+   *  a rapid session switch could otherwise have a dead session's late apply
+   *  rewrite the hash from ITS rows after the next session took over. */
+  private disposed = false
 
   constructor(options: PanelLayoutProjectionOptions) {
     this.repo = options.repo
@@ -1036,6 +1047,7 @@ export class PanelLayoutProjection {
   }
 
   dispose(): void {
+    this.disposed = true
     this.unsubscribeRows?.()
     this.unsubscribeRows = null
     this.unsubscribeUrl?.()
@@ -1053,6 +1065,9 @@ export class PanelLayoutProjection {
       .catch(() => {})
       .then(async () => {
         try {
+          // Queued after dispose (or disposed while waiting in the queue):
+          // don't touch rows or the hash on behalf of a dead projection.
+          if (this.disposed) return
           const result = await applyCurrentLayoutUrl({
             repo: this.repo,
             workspaceId: this.workspaceId,
@@ -1068,7 +1083,7 @@ export class PanelLayoutProjection {
           }
         } finally {
           this.pendingInbound--
-          if (this.pendingInbound === 0 && this.outboundSuppressed) {
+          if (this.pendingInbound === 0 && this.outboundSuppressed && !this.disposed) {
             // One deferred outbound pass with FRESH rows: a rows state that
             // legitimately diverged while inbound was in flight still
             // projects; an echo of the inbound's own writes compares equal
@@ -1079,10 +1094,12 @@ export class PanelLayoutProjection {
             const generationAtDrain = this.outboundGeneration
             const rows = await this.layoutSessionBlock.repo.query.subtree({id: this.layoutSessionBlock.id, hidePropertyChildren: true}).load()
             // Re-check after the await: a NEW inbound may have queued during
-            // the load (and rows events suppressed under it re-set the flag).
-            // Bail WITHOUT clearing — that inbound's own drain owns the flag
-            // now; clearing here would strand its suppressed divergence.
-            if (this.pendingInbound === 0) {
+            // the load (and rows events suppressed under it re-set the flag),
+            // or the projection may have been disposed mid-load. Bail WITHOUT
+            // clearing — a new inbound's own drain owns the flag now
+            // (clearing here would strand its suppressed divergence), and a
+            // disposed projection must not write the hash at all.
+            if (this.pendingInbound === 0 && !this.disposed) {
               this.outboundSuppressed = false
               if (this.outboundGeneration === generationAtDrain) {
                 this.handleRowsChanged(rows)
@@ -1165,8 +1182,15 @@ export class PanelLayoutProjection {
     const sameWorkspace = current.workspaceId === this.workspaceId
     if (sameWorkspace && sameLayoutSlots(current.slots, slots)) return
 
+    // Same carry rule as slot `rest`: the current hash's ws-context (e.g.
+    // `;persp=`) has no row representation, so every outbound hash rebuilt
+    // from rows must re-attach it — dropping it on a row change would strip
+    // the perspective lane off every history entry the projection writes
+    // (breaking Back's lane attribution). Skipped on a workspace mismatch:
+    // the context belongs to the other workspace's token.
     const outboundSlots = sameWorkspace ? withRestFromUrl(current.slots, slots) : slots
-    const nextHash = buildLayoutFromSlots(this.workspaceId, outboundSlots)
+    const nextHash = buildLayoutFromSlots(
+      this.workspaceId, outboundSlots, sameWorkspace ? current.wsContext : undefined)
     if (sameWorkspace && sameLayoutSlots(current.slots, slots, 'ignore-active')) {
       // Active-only diff: which pane is focused is not a history entry —
       // rewrite the current one instead of pushing.

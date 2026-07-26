@@ -2,6 +2,7 @@ import { BlockTypeBlockRenderer } from '@/components/renderer/BlockTypeBlockRend
 import { CodeMirrorExtensionBlockRenderer } from '@/components/renderer/CodeMirrorExtensionBlockRenderer.js'
 import { DefaultBlockRenderer } from '@/components/renderer/DefaultBlockRenderer.js'
 import { LayoutRenderer } from '@/components/renderer/LayoutRenderer.js'
+import { LayoutSessionHost } from '@/components/renderer/LayoutSessionHost.js'
 import { MissingDataRenderer } from '@/components/renderer/MissingDataRenderer.js'
 import { PanelRenderer } from '@/components/renderer/PanelRenderer.js'
 import { PropertySchemaBlockRenderer } from '@/components/renderer/PropertySchemaBlockRenderer.js'
@@ -17,6 +18,11 @@ export const defaultRendererContributions: RendererContribution[] = [
   {id: 'propertySchema', renderer: PropertySchemaBlockRenderer},
   {id: 'blockType', renderer: BlockTypeBlockRenderer},
   {id: 'topLevel', renderer: TopLevelRenderer},
+  // Default-off keep-alive host: claims ONLY the layout-sessions container
+  // block (deterministic-id canRender, priority 30 > topLevel's 20). Inert
+  // until something mounts the container as the layout root — App mounts
+  // the SESSION block, so stock behavior is unchanged.
+  {id: 'layoutSessionHost', renderer: LayoutSessionHost},
   {id: 'layout', renderer: LayoutRenderer},
   {id: 'panel', renderer: PanelRenderer},
   {id: 'missingData', renderer: MissingDataRenderer},

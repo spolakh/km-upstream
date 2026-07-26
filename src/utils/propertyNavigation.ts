@@ -68,6 +68,19 @@ const PROPERTY_FOCUSABLE_SELECTOR = [
 
 const isVisibleElement = (element: HTMLElement): boolean => {
   if (typeof window === 'undefined' || !window.getComputedStyle) return true
+  // Prefer checkVisibility: it walks ANCESTORS, so a property row inside a
+  // warm-but-hidden layout session (display:none on some ancestor wrapper,
+  // not the row itself — see LayoutSessionHost/layoutSessionDom.ts) reports
+  // correctly invisible. The own-element style check below only ever saw
+  // the row's own computed style, which is unaffected by an ancestor's
+  // display:none and so falsely reported "visible". visibilityProperty
+  // extends the ancestor walk to visibility:hidden too, matching the old
+  // check's own-element visibility test. Fall back for environments
+  // without checkVisibility (older browsers) — own-element check only,
+  // exactly the prior behavior.
+  if (typeof element.checkVisibility === 'function') {
+    return element.checkVisibility({visibilityProperty: true})
+  }
   const style = window.getComputedStyle(element)
   return style.display !== 'none' && style.visibility !== 'hidden'
 }

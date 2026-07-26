@@ -42,12 +42,26 @@ export const usePanelLayoutProjection = (block: Block): void => {
     // resolution into dispose() instead of leaving a live projection behind.
     let disposed = false
     void projection.start()
-      .then(() => {
+      .then(async () => {
         if (disposed) {
           projection.dispose()
           return
         }
-        onLayoutHashChanged()
+        // Reconcile the CURRENT URL once, explicitly: start() only loads rows
+        // and subscribes, and pushState fires neither hashchange nor popstate
+        // — so a projection constructed AFTER boot (LayoutSessionHost
+        // switching to a warm session behind a freshly pushed slot-less
+        // `#ws;persp=…` hash) would otherwise never normalize its session's
+        // rows into the hash, and its first row mutation would push a
+        // spurious extra history entry over the stale one. For the BOOT
+        // session this re-applies what bootstrapWorkspace just applied and
+        // canonicalized — a provable no-op (topology-equal reconcile writes
+        // nothing; the canonical hash compares equal so nothing is replaced
+        // or pushed; kind 'noop' doesn't notify), pinned in
+        // panelLayoutProjection.test.ts — which is why there is ONE behavior
+        // here rather than a host-only mode flag.
+        await projection.applyCurrentUrl()
+        if (!disposed) onLayoutHashChanged()
       })
       .catch(error => {
         console.error('[usePanelLayoutProjection] Failed to start panel layout projection', error)

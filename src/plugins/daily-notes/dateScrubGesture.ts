@@ -31,6 +31,7 @@
  */
 import type { Block } from '@/data/block'
 import type { BlockDateAdapter } from './blockDateAdapter.ts'
+import { activeLayoutSessionElement } from '@/utils/layoutSessionDom'
 
 /** Pixels of scrub motion per ISO day. Picked so that ±2 weeks fits
  *  inside half a thumb-arc on a phone (~200px = 14 days). */
@@ -208,7 +209,12 @@ const keyboardScrubAnchorPoint = (blockId: string): {x: number; y: number} => {
   const activeBlock = activeElement instanceof Element
     ? activeElement.closest<HTMLElement>(selector)
     : null
-  const blockElement = activeBlock ?? document.querySelector<HTMLElement>(selector)
+  // First-match fallback (no focused ancestor to anchor from): scope to the
+  // ACTIVE layout session so a warm hidden session's DOM (also matching
+  // data-block-id) can't win the query — see layoutSessionDom.ts. Degrades
+  // to a document-wide query when the host isn't mounted (single session).
+  const blockElement = activeBlock
+    ?? (activeLayoutSessionElement() ?? document).querySelector<HTMLElement>(selector)
   const anchor = blockElement?.querySelector<HTMLElement>('.block-content') ?? blockElement
   if (!anchor) return fallback
 

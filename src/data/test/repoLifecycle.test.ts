@@ -441,6 +441,7 @@ describe('repo.activeLayoutSessionId', () => {
       expect(env.repo.activeLayoutSessionId).toBe('perspective-a')
       expect(other.repo.activeLayoutSessionId).toBe('perspective-b')
     } finally {
+      env.repo.setActiveLayoutSessionId(null)
       await other.h.cleanup()
     }
   })

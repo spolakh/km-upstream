@@ -318,6 +318,81 @@ describe('old (s:...) grammar is dead', () => {
   })
 })
 
+describe('ws-token context (`#ws;persp=x/...`)', () => {
+  it('splits matrix entries off the workspace token so workspaceId comes out CLEAN', () => {
+    expect(parseLayout('#ws-1;persp=abc/block-1')).toEqual({
+      workspaceId: 'ws-1',
+      wsContext: ['persp=abc'],
+      slots: [{kind: 'leaf', blockId: 'block-1'}],
+      blockIds: ['block-1'],
+    })
+  })
+
+  it('parses a ws-context on a workspace-only hash', () => {
+    expect(parseLayout('#ws-1;persp=abc')).toEqual({
+      workspaceId: 'ws-1',
+      wsContext: ['persp=abc'],
+      slots: [],
+      blockIds: [],
+    })
+  })
+
+  it('round-trips through buildLayoutFromSlots with and without slots', () => {
+    for (const hash of ['#ws-1;persp=abc', '#ws-1;persp=abc/a/b,c']) {
+      const route = parseLayout(hash)
+      expect(buildLayoutFromSlots(route.workspaceId!, route.slots, route.wsContext)).toBe(hash)
+    }
+  })
+
+  it('omits wsContext entirely when the ws token carries no entries', () => {
+    expect(parseLayout('#ws-1/a')).not.toHaveProperty('wsContext')
+    expect(buildLayoutFromSlots('ws-1', [{kind: 'leaf', blockId: 'a'}])).toBe('#ws-1/a')
+    expect(buildLayoutFromSlots('ws-1', [{kind: 'leaf', blockId: 'a'}], [])).toBe('#ws-1/a')
+  })
+
+  it('every ws key is opaque — persp, unknown keys, and even view/active pass through verbatim', () => {
+    expect(parseLayout('#ws;persp=x;zed;view=m;active').wsContext)
+      .toEqual(['active', 'persp=x', 'view=m', 'zed'])
+  })
+
+  it('canonicalizes at parse: key-sorted, first-wins dedup, malformed entries dropped', () => {
+    expect(parseLayout('#ws;zz=1;aa=2;zz=9;Bad=3;sp ace;k=a=b/a').wsContext)
+      .toEqual(['aa=2', 'zz=1'])
+    // Empty segments are no entries at all.
+    expect(parseLayout('#ws;;/a')).not.toHaveProperty('wsContext')
+  })
+
+  it('build re-checks programmatic entries (same guard as slot rest)', () => {
+    expect(buildLayoutFromSlots('ws', [], ['zz=1', 'aa=2', 'Bad=3', 'zz=9', 'k=a=b']))
+      .toBe('#ws;aa=2;zz=1')
+  })
+
+  it('is a parse∘build∘parse fixed point', () => {
+    for (const hash of ['#ws;persp=x/a', '#ws;zz=1;aa=2', '#ws;k=a=b/a;view=m']) {
+      const first = parseLayout(hash)
+      const rebuilt = buildLayoutFromSlots(first.workspaceId ?? '', first.slots, first.wsContext)
+      expect(parseLayout(rebuilt)).toEqual(first)
+    }
+  })
+
+  it('slot-level context still parses independently of the ws-context', () => {
+    const route = parseLayout('#ws;persp=x/a;view=m;active/b')
+    expect(route.workspaceId).toBe('ws')
+    expect(route.wsContext).toEqual(['persp=x'])
+    expect(route.slots).toEqual([
+      {kind: 'leaf', blockId: 'a', viewMode: 'm', active: true},
+      {kind: 'leaf', blockId: 'b'},
+    ])
+  })
+
+  it('parseAppHash returns the clean workspace id for a persp-bearing hash', () => {
+    expect(parseAppHash('#ws-1;persp=abc/block-1')).toEqual({
+      workspaceId: 'ws-1',
+      blockId: 'block-1',
+    })
+  })
+})
+
 describe('preserveHashQueryParams', () => {
   it('carries bridge pairing params onto a replacement layout hash', () => {
     expect(
@@ -348,6 +423,13 @@ describe('layoutWorkspaceChanged', () => {
     expect(layoutWorkspaceChanged('#ws-1/a', '#ws-2/a')).toBe(true)
     expect(layoutWorkspaceChanged('#ws-1/a', '')).toBe(true)
     expect(layoutWorkspaceChanged('', '#ws-1/a')).toBe(true)
+  })
+
+  it('compares CLEAN ids — a persp-only change is NOT a workspace change (no spurious full remount)', () => {
+    expect(layoutWorkspaceChanged('#ws-1;persp=a/x', '#ws-1;persp=b/x')).toBe(false)
+    expect(layoutWorkspaceChanged('#ws-1/x', '#ws-1;persp=a/x')).toBe(false)
+    // A REAL workspace change under identical persp entries still registers.
+    expect(layoutWorkspaceChanged('#ws-1;persp=a/x', '#ws-2;persp=a/x')).toBe(true)
   })
 })
 

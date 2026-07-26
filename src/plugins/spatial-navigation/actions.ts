@@ -47,6 +47,7 @@ import {
 } from './walker.ts'
 import { resolveSpatialNavExclusions } from './exclusionsFacet.ts'
 import { activatePanelRowInTx } from '@/utils/panelLayoutProjection'
+import { activeLayoutSessionElement } from '@/utils/layoutSessionDom'
 
 /** Resolve the live excluded-surface set once per handler entry, off the
  *  ui-state block's repo — the non-React access path
@@ -319,7 +320,15 @@ const moveHorizontal = async (
   if (!block || !uiStateBlock) return false
   const current = currentInstance(deps)
   if (!current) return false
-  const destPanel = horizontalNeighborPanel(current, direction)
+  // Scope the column walk to the ACTIVE layout session: with the
+  // session host mounted, N warm sessions each carry their own
+  // `[data-layout-column-id]` columns, so an unscoped document-wide query
+  // could resolve the column AFTER the active session's last one as
+  // belonging to a hidden session — landing moveHorizontal on a column
+  // that isn't really adjacent and aborting the tx in
+  // activatePanelRowInTx. Scoping to the active session's root restores
+  // the correct null-at-the-edge result (see layoutSessionDom.ts).
+  const destPanel = horizontalNeighborPanel(current, direction, activeLayoutSessionElement() ?? document)
   if (!destPanel) return false
   const destPanelId = destPanel.dataset.panelId
   if (!destPanelId) return false
@@ -352,12 +361,12 @@ const crossPanelFocus = async (
 ): Promise<void> => {
   const repo = sourcePanelBlock.repo
   const destPanelBlock = repo.block(destPanelId)
-  // Find the layout session by walking up the DOM — its id is on the
-  // outer layout div. Cheap; runs once per cross-panel keystroke.
-  const layoutEl = typeof document !== 'undefined'
-    ? document.querySelector<HTMLElement>('[data-layout-session-id]')
-    : null
-  const layoutSessionId = layoutEl?.dataset.layoutSessionId
+  // Resolve the ACTIVE layout session from the DOM — with the session host
+  // mounted, N warm sessions each carry data-layout-session-id, so a bare
+  // first-match query could grab a hidden one; the helper prefers the
+  // active marker and degrades to the old single-session match. Cheap;
+  // runs once per cross-panel keystroke.
+  const layoutSessionId = activeLayoutSessionElement()?.dataset.layoutSessionId
   // Single tx that flips both ends of the activation gate at once.
   // Same shape as `focusBlock` but validates and activates the destination
   // panel on the layout-session block first; row deps still resolve

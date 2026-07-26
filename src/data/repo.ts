@@ -1362,7 +1362,9 @@ export class Repo {
 
   /** Override the active layout-session id (`null` restores the base
    *  id). Pure delegation — see
-   *  {@link ClientContext.setActiveLayoutSessionId} for semantics. */
+   *  {@link ClientContext.setActiveLayoutSessionId} for semantics
+   *  (including the effective-change notification consumed by
+   *  `useActiveLayoutSessionId` / `LayoutSessionHost`). */
   setActiveLayoutSessionId(id: string | null): void {
     this._client.setActiveLayoutSessionId(id)
   }

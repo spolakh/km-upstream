@@ -1,6 +1,6 @@
 import type { Block } from '@/data/block.js'
 import type { Repo } from '@/data/repo.js'
-import { buildLayout, preserveHashQueryParams } from '@/utils/routing.js'
+import { buildLayout, buildLayoutFromSlots, parseLayout, preserveHashQueryParams } from '@/utils/routing.js'
 import { rememberWorkspace } from '@/utils/lastWorkspace.js'
 import { getLayoutSessionBlock, getUIStateBlock } from '@/data/stateBlocks.js'
 import { workspaceLandingFacet } from '@/extensions/core.js'
@@ -201,7 +201,15 @@ export const bootstrapWorkspace = async ({
       // AppRuntimeProvider's initial render uses.
       const landingId = await resolveLandingBlockId(repo, workspaceId, freshlyCreated)
       if (landingId) {
-        replaceHash(buildLayout(workspaceId, [landingId]))
+        // Carry the inbound hash's ws-context (`;persp=` etc.) onto the
+        // landing hash: an empty layout is exactly how a fresh perspective
+        // session boots, and dropping the context here would strip the
+        // extension-side lane marker on its very first paint.
+        replaceHash(buildLayoutFromSlots(
+          workspaceId,
+          [{kind: 'leaf', blockId: landingId}],
+          parseLayout(hashForResolvedWorkspace).wsContext,
+        ))
         await repo.tx(async tx => {
           const parent = await tx.get(layoutSessionBlock.id)
           if (!parent) throw new Error(`getInitialLayout: layout session block ${layoutSessionBlock.id} not found`)

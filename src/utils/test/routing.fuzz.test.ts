@@ -150,7 +150,10 @@ describe('fixed point: parse∘build∘parse (routing.ts:184-185)', () => {
     fc.assert(
       fc.property(soupArb, raw => {
         const first = parseLayout(raw)
-        const rebuilt = buildLayoutFromSlots(first.workspaceId ?? '', first.slots)
+        // wsContext is threaded through like the slots: parse canonicalizes
+        // the ws-token entries, build re-emits them, so the composition is a
+        // fixed point over the WHOLE route — id, ws-context, and slots.
+        const rebuilt = buildLayoutFromSlots(first.workspaceId ?? '', first.slots, first.wsContext)
         const second = parseLayout(rebuilt)
         expect(second).toEqual(first)
       }),
