@@ -21,13 +21,21 @@
  * stylesheet. extensionUtilitiesCss.ts loads it on demand: the extension
  * compile path starts the load and the runtime apply waits for it.
  *
- * BUILD SHAPE
- * `source(none)` turns off automatic content detection for this entry so it
- * emits ONLY the classes listed below, not a duplicate of what index.css
- * already generates from the app's source. `@reference` makes index.css's
- * theme (tokens, the custom dark variant) resolvable here without re-emitting
- * any of its CSS. Order matters: `@reference` after the utilities import, or
- * the file emits nothing.
+ * BUILD SHAPE: A CANONICAL-ORDER SUPERSET OF THE APP'S UTILITIES
+ * This entry scans the app source exactly as index.css does AND adds the
+ * safelist below, so it emits every utility the app emits, in Tailwind's
+ * canonical order, with the safelisted ones interleaved where they belong.
+ * The duplication is load-bearing: both sheets put their rules in the same
+ * `utilities` cascade layer and this one is appended after index.css, so for
+ * any utility both sheets emit, THIS sheet's order decides the cascade for
+ * every element on the page, core's included. A safelist-only build
+ * (`source(none)`) re-emits base utilities after the app's variants of them,
+ * and a later rule of equal specificity wins whatever Tailwind's ordering
+ * says (`flex-col` over `@md:flex-row`). scripts/check-dist-css-order.ts
+ * pins the superset on the built output. `@reference` makes index.css's
+ * theme (tokens, the custom dark variant, plugins) resolvable here without
+ * re-emitting any of its base or theme CSS. Order matters: `@reference`
+ * after the utilities import, or the file emits nothing.
  *
  * SCOPE
  * Base utilities are covered broadly (layout, spacing, sizing, typography,
@@ -41,7 +49,7 @@
  * this file. Keep additions grouped and re-measure the output size.
  * ═══════════════════════════════════════════════════════════════════════ */
 
-@import "tailwindcss/utilities" layer(utilities) source(none);
+@import "tailwindcss/utilities" layer(utilities);
 @reference "./index.css";
 
 /* ── Display / box ─────────────────────────────────────────────────────── */
